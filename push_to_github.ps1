@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$RemoteUrl = "https://github.com/Donghoonhankor/making-team.git",
   [string]$Branch = "main",
   [string]$Message = "Initial making-team workspace"
@@ -26,8 +26,9 @@ if ($remoteExists) {
 git add README.md .gitignore Code.gs master_code.gs teacher_code.gs `
   math_diagram_renderer.py MathDiagramRenderer.spec 수학도표렌더러.exe `
   hwp_problem_builder.py HWPProblemBuilder.spec HWP문항생성기.exe `
-  TEMPLATE_NOTES.md push_to_github.ps1
+  TEMPLATE_NOTES.md renderer_regression_test.txt push_to_github.ps1
 
 git commit -m $Message
 git push -u origin $Branch
+
 

@@ -20,14 +20,50 @@ Implemented in `math_diagram_renderer.py`:
 - `two_parabolas_between_area`
 - `parabola_family_origin`
 - `multiple_choice_parabola_position`
+- `parabola_shift_from_base`
+- `two_parabolas_same_width_horizontal_chord`
 - `rectangle_cross_road`
 - `rectangle_slanted_cross_road`
 - `rectangle_multi_slanted_roads`
+- `two_origin_parabolas_parallelogram`
+- `parabola_diamond_on_axes`
+- `two_parabolas_square`
+- `two_parabolas_shared_vertex_intersections`
+- `line_to_parabola_quadrant_match`
+- `annulus_area`
+- `circle_with_two_semicircles`
+- `rectangle_point_triangle`
+- `square_expanded_garden`
 - `rectangular_park_border`
+- `rectangle_diagonal_flower_path`
 - `two_squares_on_segment`
 - `two_squares_from_segment`
+- `growing_rectangle`
 - `open_box_net_equal_cuts`
 - `open_box_net_rectangular_paper`
+- `folded_tray`
+- `adjacent_rectangles`
+- `moving_points_rectangle_triangle`
+- `right_isosceles_triangle_inner_rectangle`
+- `right_isosceles_triangle_parallelogram`
+- `tiled_rectangle_corner_square`
+- `linear_basic_intercepts`
+- `linear_point_guides`
+- `linear_axis_triangle`
+- `linear_two_lines_region`
+- `linear_square_under_line`
+- `grid_number_table`
+- `tiled_rectangles_layout`
+- `regular_polygon_chain`
+- `rectangle_side_point_triangle`
+- `rectangle_cut_corner`
+- `rectangle_expanding_sides`
+- `three_semicircles`
+- `folded_rectangle_overlap`
+- `square_internal_rectangles`
+- `regular_polygon_diagonals`
+- `linear_parallel_lines`
+- `multiple_choice_linear_position`
 
 Implemented behavior:
 
@@ -378,6 +414,278 @@ parabola_form=y=-(x+a)^2+b
 ```
 
 ## Quadratic Equation / Geometry Backlog
+
+## Linear Equation / Linear Function Templates
+
+### `linear_basic_intercepts`
+
+Purpose:
+
+- One straight-line graph with x- and y-intercepts labeled.
+- Covers problems asking for slope/intercepts from a line graph.
+
+Fields:
+
+```text
+template=linear_basic_intercepts
+equation=y = -1/3*x + 2
+```
+
+### `linear_point_guides`
+
+Purpose:
+
+- Straight-line graph with named points and dashed guide lines to the axes.
+- Covers problems using given points, x/y coordinates, or reflected/translated points.
+
+Fields:
+
+```text
+template=linear_point_guides
+equation=y = x + 3
+points=A(5,8), B(0,3), P(-2,1)
+```
+
+### `linear_axis_triangle`
+
+Purpose:
+
+- A line, the x-axis, and optionally a vertical line enclose a shaded triangle.
+- Covers area problems with a line and `x=c`.
+
+Fields:
+
+```text
+template=linear_axis_triangle
+equation=4*x - y + 2 = 0
+vertical_x=5
+```
+
+### `linear_two_lines_region`
+
+Purpose:
+
+- Two or more straight lines with a shaded triangle/quadrilateral region.
+- Covers line intersection, simultaneous equations, and area problems.
+
+Fields:
+
+```text
+template=linear_two_lines_region
+equations=y = -x + 11; y = -1/3*x + 3
+points=A(1,0), B(0,0), C(0,3)
+```
+
+### `linear_square_under_line`
+
+Purpose:
+
+- Straight line with adjacent squares placed between the line and the x-axis.
+- Covers square/rectangle insertion problems under a line graph.
+
+Fields:
+
+```text
+template=linear_square_under_line
+equation=y = 1/3*x + 1
+x_left=2
+side=1
+```
+
+### `grid_number_table`
+
+Purpose:
+
+- Number grid/table where selected cells contain numbers or unknowns.
+- Covers average/row-column-diagonal grid problems.
+
+Fields:
+
+```text
+template=grid_number_table
+rows=3
+cols=3
+entries=1,3,4;2,1,9;2,3,y;3,1,x;3,2,2
+```
+
+### `tiled_rectangles_layout`
+
+Purpose:
+
+- A large rectangle formed by smaller congruent rectangles in offset rows.
+- Covers perimeter/tiling problems with small rectangles.
+
+Fields:
+
+```text
+template=tiled_rectangles_layout
+rows=2
+cols=4
+cell_width=2
+cell_height=1.25
+offset=1
+```
+
+### `regular_polygon_chain`
+
+Purpose:
+
+- Several congruent regular polygons connected in a chain.
+- Covers matchstick/counting relation problems for pentagons, hexagons, and similar polygons.
+
+Fields:
+
+```text
+template=regular_polygon_chain
+sides=6
+count=3
+side=1
+```
+
+### `rectangle_side_point_triangle`
+
+Purpose:
+
+- Rectangle with a moving or marked point on one side and a shaded triangle to selected vertices.
+- Covers area/change problems inside a rectangle.
+
+Fields:
+
+```text
+template=rectangle_side_point_triangle
+width=24
+height=32
+point_side=bottom
+point_ratio=0.45
+triangle_points=A,B,P
+```
+
+### `rectangle_cut_corner`
+
+Purpose:
+
+- Rectangle with one corner cut by a slanted segment, leaving a shaded polygon.
+- Covers land/field problems where points on adjacent sides are connected.
+
+Fields:
+
+```text
+template=rectangle_cut_corner
+width=18
+height=12
+top_cut=5
+right_cut=3
+```
+
+### `rectangle_expanding_sides`
+
+Purpose:
+
+- Rectangle whose width and height are extended outward.
+- Covers changing-side rectangle area problems.
+
+Fields:
+
+```text
+template=rectangle_expanding_sides
+width=60
+height=33
+right_expand=15
+bottom_expand=12
+```
+
+### `three_semicircles`
+
+Purpose:
+
+- Large semicircle with two smaller semicircles on the same diameter.
+- Covers shaded arch/semicircle area problems.
+
+Fields:
+
+```text
+template=three_semicircles
+diameter=20
+split=12
+```
+
+### `folded_rectangle_overlap`
+
+Purpose:
+
+- Folded rectangle/trapezoid overlap diagram.
+- Covers folded paper and area-change problems.
+
+Fields:
+
+```text
+template=folded_rectangle_overlap
+width=12
+height=12
+fold_x=7
+right_height=8
+```
+
+### `square_internal_rectangles`
+
+Purpose:
+
+- Square split by internal vertical/horizontal segments with one rectangle shaded.
+- Covers square subdivision and perimeter/area relation problems.
+
+Fields:
+
+```text
+template=square_internal_rectangles
+side=10
+inner_x=4
+inner_y=6
+```
+
+### `regular_polygon_diagonals`
+
+Purpose:
+
+- Regular polygon with all diagonals drawn.
+- Covers diagonal/center/length problems in regular polygons.
+
+Fields:
+
+```text
+template=regular_polygon_diagonals
+sides=5
+side=1
+```
+
+### `linear_parallel_lines`
+
+Purpose:
+
+- A family of parallel straight lines, optionally with points and guides.
+- Covers parallel-line translation and quadrant/intercept problems.
+
+Fields:
+
+```text
+template=linear_parallel_lines
+equation=y = -x + 6
+offsets=-3,3
+points=A(-3,-5)
+```
+
+### `multiple_choice_linear_position`
+
+Purpose:
+
+- Multiple small coordinate planes showing candidate straight-line positions.
+- Covers sign/quadrant multiple-choice problems.
+
+Fields:
+
+```text
+template=multiple_choice_linear_position
+choices=y = -x + 1; y = x + 1; y = -x - 1; y = x - 1; y = x
+```
 
 ### `annulus_area`
 

@@ -406,6 +406,157 @@ def y_values_for_equations(equations, x_range):
     return values
 
 
+def linear_coefficients(raw):
+    text = str(raw or "").strip()
+    if not text:
+        raise ValueError("empty line equation")
+    if text.startswith("y=") or text.startswith("y ="):
+        expr = normalize_expr(text.split("=", 1)[1])
+        m = parse_number(safe_eval(expr, 1) - safe_eval(expr, 0), 0)
+        b = parse_number(safe_eval(expr, 0), 0)
+        return m, -1.0, b
+    if text.startswith("x=") or text.startswith("x ="):
+        value = parse_number(text.split("=", 1)[1], 0)
+        return 1.0, 0.0, -value
+    if "=" in text:
+        left, right = text.split("=", 1)
+        expr = normalize_expr(f"({left})-({right})")
+    else:
+        expr = normalize_expr(text)
+    f00 = float(eval(expr, {"__builtins__": {}}, {"x": 0, "y": 0, **SAFE_FUNCS}))
+    fx1 = float(eval(expr, {"__builtins__": {}}, {"x": 1, "y": 0, **SAFE_FUNCS}))
+    fy1 = float(eval(expr, {"__builtins__": {}}, {"x": 0, "y": 1, **SAFE_FUNCS}))
+    a = fx1 - f00
+    b = fy1 - f00
+    c = f00
+    if abs(a) < 1e-9 and abs(b) < 1e-9:
+        raise ValueError("not a line equation")
+    return a, b, c
+
+
+def parse_line_equation(raw):
+    a, b, c = linear_coefficients(raw)
+    return {"raw": str(raw or "").strip(), "a": a, "b": b, "c": c}
+
+
+def parse_line_equations(value):
+    items = split_semicolon_outside_parentheses(value or "")
+    if len(items) <= 1:
+        items = split_csv_outside_parentheses(value or "")
+    return [parse_line_equation(item) for item in items if item.strip()]
+
+
+def line_y(line, x_value):
+    if abs(line["b"]) < 1e-9:
+        return None
+    return -(line["a"] * x_value + line["c"]) / line["b"]
+
+
+def line_x_at_y(line, y_value):
+    if abs(line["a"]) < 1e-9:
+        return None
+    return -(line["b"] * y_value + line["c"]) / line["a"]
+
+
+def line_intersection(line1, line2):
+    det = line1["a"] * line2["b"] - line2["a"] * line1["b"]
+    if abs(det) < 1e-9:
+        return None
+    x = (line1["b"] * line2["c"] - line2["b"] * line1["c"]) / det
+    y = (line1["c"] * line2["a"] - line2["c"] * line1["a"]) / det
+    return x, y
+
+
+def line_axis_intercepts(line):
+    points = []
+    x0 = line_x_at_y(line, 0)
+    y0 = line_y(line, 0)
+    if x0 is not None:
+        points.append(point_item("A", x0, 0))
+    if y0 is not None:
+        points.append(point_item("B", 0, y0))
+    return points
+
+
+def line_sample_y_values(lines, x_range):
+    xs = np.linspace(x_range[0], x_range[1], 300)
+    values = []
+    for line in lines:
+        if abs(line["b"]) < 1e-9:
+            continue
+        ys = [line_y(line, x) for x in xs]
+        finite = [y for y in ys if y is not None and math.isfinite(y)]
+        if finite:
+            values.extend([min(finite), max(finite)])
+    return values
+
+
+def parse_named_points(value):
+    points = parse_points(value)
+    return points
+
+
+def render_linear_scene(output_path, lines, points=None, polygons=None, guides=True, labels=True,
+                        x_candidates=None, y_candidates=None, shade_color="#cfe8d2", extra_draw=None):
+    points = points or []
+    polygons = polygons or []
+    x_candidates = list(x_candidates or [0])
+    y_candidates = list(y_candidates or [0])
+    x_candidates.extend(point["x"] for point in points)
+    y_candidates.extend(point["y"] for point in points)
+    for line in lines:
+        x0 = line_x_at_y(line, 0)
+        y0 = line_y(line, 0)
+        if x0 is not None:
+            x_candidates.append(x0)
+        if y0 is not None:
+            y_candidates.append(y0)
+    if not x_candidates:
+        x_candidates = [-3, 3]
+    x_range = pad_range(min(x_candidates), max(x_candidates), 0.22, 4.0)
+    sampled = line_sample_y_values(lines, x_range)
+    y_candidates.extend(sampled)
+    if not y_candidates:
+        y_candidates = [-3, 3]
+    y_range = pad_range(min(y_candidates), max(y_candidates), 0.20, 4.0)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    for polygon in polygons:
+        ax.fill([point["x"] for point in polygon], [point["y"] for point in polygon],
+                color=shade_color, alpha=0.65, zorder=1)
+        ax.plot([point["x"] for point in polygon + [polygon[0]]],
+                [point["y"] for point in polygon + [polygon[0]]],
+                color="#6d7f70", lw=lw(1.0), zorder=3)
+
+    for line in lines:
+        if abs(line["b"]) < 1e-9:
+            x_value = -line["c"] / line["a"]
+            ax.axvline(x_value, color="black", lw=lw(1.5), zorder=4)
+        else:
+            xs = np.linspace(x_range[0], x_range[1], 600)
+            ys = [line_y(line, x) for x in xs]
+            ax.plot(xs, ys, color="black", lw=lw(1.5), zorder=4)
+
+    if extra_draw:
+        extra_draw(ax, x_range, y_range)
+
+    if guides:
+        for point in points:
+            if abs(point["x"]) > 1e-9 and y_range[0] <= 0 <= y_range[1]:
+                ax.plot([point["x"], point["x"]], [0, point["y"]], color="#777777", ls="--", lw=lw(0.9), zorder=2)
+                annotate_axis_value(ax, x_range, y_range, "x", point["x"], "below")
+            if abs(point["y"]) > 1e-9 and x_range[0] <= 0 <= x_range[1]:
+                ax.plot([0, point["x"]], [point["y"], point["y"]], color="#777777", ls="--", lw=lw(0.9), zorder=2)
+                annotate_axis_value(ax, x_range, y_range, "y", point["y"], "left")
+
+    if labels:
+        plot_labeled_points(ax, points)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
 def quadratic_coefficients(equation):
     xs = np.array([-1.0, 0.0, 1.0, 2.0])
     ys = np.asarray(safe_eval(equation["expr"], xs), dtype=float)
@@ -456,6 +607,11 @@ def positive_roots_for_y_level(equation, y_value):
     return sorted(root for root in roots if root >= -1e-9)
 
 
+def roots_for_y_level(equation, y_value):
+    a, b, c = quadratic_coefficients(equation)
+    return quadratic_roots_from_coeffs(a, b, c - y_value)
+
+
 def equation_value(equation, x_value):
     return float(safe_eval(equation["expr"], float(x_value)))
 
@@ -470,6 +626,57 @@ def plot_labeled_points(ax, points):
         if point.get("label"):
             ax.annotate(point["label"], (point["x"], point["y"]), xytext=(4, 4),
                         textcoords="offset points", fontsize=fs(10), zorder=7)
+
+
+def render_quadratic_scene(output_path, equations, points=None, polygons=None, extra_draw=None, x_candidates=None, y_candidates=None):
+    points = points or []
+    polygons = polygons or []
+    x_candidates = list(x_candidates or [])
+    y_candidates = list(y_candidates or [])
+    for equation in equations:
+        try:
+            coeffs = quadratic_coefficients(equation)
+            roots = quadratic_x_intercepts(coeffs)
+            vertex = quadratic_vertex(coeffs)
+            x_candidates.extend(roots + [vertex[0], 0])
+            y_candidates.extend([0, vertex[1], equation_value(equation, 0)])
+        except Exception:
+            x_candidates.extend([-3, 3, 0])
+            y_candidates.append(0)
+    x_candidates.extend(point["x"] for point in points)
+    y_candidates.extend(point["y"] for point in points)
+    if not x_candidates:
+        x_candidates = [-3, 3]
+    if not y_candidates:
+        y_candidates = [-3, 3]
+    x_range = pad_range(min(x_candidates), max(x_candidates), 0.24, 2.0)
+    x_range = widen_x_for_parabola_style(x_range, 0.10)
+    sampled_y = y_values_for_equations(equations, x_range)
+    if sampled_y:
+        y_candidates.extend(sampled_y)
+    y_range = pad_range(min(y_candidates), max(y_candidates), 0.18, 2.0)
+    y_range = steepen_parabola_view(x_range, y_range, 0.78)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    x = np.linspace(x_range[0], x_range[1], 1200)
+    for equation in equations:
+        y = safe_eval(equation["expr"], x)
+        if np.isscalar(y):
+            y = np.full_like(x, float(y))
+        ax.plot(x, y, lw=lw(2), zorder=3)
+    for polygon in polygons:
+        ax.fill([point["x"] for point in polygon], [point["y"] for point in polygon],
+                color="#f4c7b8", alpha=0.5, zorder=2)
+        ax.plot([point["x"] for point in polygon + [polygon[0]]],
+                [point["y"] for point in polygon + [polygon[0]]],
+                color="#8c5a4a", lw=lw(1.0), zorder=4)
+    if extra_draw:
+        extra_draw(ax, x_range, y_range)
+    plot_labeled_points(ax, points)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
 
 
 def axis_label_sides_for_polygon(polygon):
@@ -850,6 +1057,579 @@ def render_multiple_choice_parabola_position(spec, output_path):
     return warnings
 
 
+def render_parabola_shift_from_base(spec, output_path):
+    base_eq = parse_y_equation(spec.get("base_equation") or spec.get("equation") or "y=x^2")
+    shift_x = parse_number(spec.get("shift_x"), 0)
+    shift_y = parse_number(spec.get("shift_y"), 0)
+    shifted_eq = {
+        "raw": f"shifted {base_eq['raw']}",
+        "kind": "y",
+        "expr": f"({base_eq['expr'].replace('x', '(x-(' + str(shift_x) + '))')})+({shift_y})",
+    }
+
+    def extra(ax, x_range, y_range):
+        x = np.linspace(x_range[0], x_range[1], 1200)
+        y = safe_eval(base_eq["expr"], x)
+        if np.isscalar(y):
+            y = np.full_like(x, float(y))
+        ax.plot(x, y, color="#777777", lw=lw(1.4), ls="--", zorder=2)
+        ax.annotate("", xy=(shift_x, shift_y), xytext=(0, 0),
+                    arrowprops=dict(arrowstyle="->", lw=lw(1.0), color="#555555"), zorder=5)
+        if abs(shift_x) > 1e-9:
+            annotate_axis_value(ax, x_range, y_range, "x", shift_x, "below")
+        if abs(shift_y) > 1e-9:
+            annotate_axis_value(ax, x_range, y_range, "y", shift_y, "left")
+
+    points = [point_item("O'", shift_x, shift_y)] if abs(shift_x) > 1e-9 or abs(shift_y) > 1e-9 else []
+    return render_quadratic_scene(output_path, [shifted_eq], points=points, extra_draw=extra,
+                                  x_candidates=[-3 + shift_x, 3 + shift_x, 0],
+                                  y_candidates=[shift_y, 0])
+
+
+def render_two_parabolas_same_width_horizontal_chord(spec, output_path):
+    eq_left = parse_y_equation(spec.get("equation_left") or spec.get("equation1") or "y=(x+2)^2")
+    eq_right = parse_y_equation(spec.get("equation_right") or spec.get("equation2") or "y=(x-2)^2")
+    chord_y = spec.get("chord_y")
+    if chord_y in (None, ""):
+        vertices = [quadratic_vertex(quadratic_coefficients(eq_left)), quadratic_vertex(quadratic_coefficients(eq_right))]
+        chord_y = max(vertices[0][1], vertices[1][1]) + 2
+    chord_y = parse_number(chord_y, 2)
+    left_roots = roots_for_y_level(eq_left, chord_y)
+    right_roots = roots_for_y_level(eq_right, chord_y)
+    warnings = []
+    if not left_roots or not right_roots:
+        warnings.append("horizontal-chord template needs intersections at chord_y")
+        left_x, right_x = -1, 1
+    else:
+        left_x = min(left_roots)
+        right_x = max(right_roots)
+    points = [point_item("A", left_x, chord_y), point_item("B", right_x, chord_y)]
+
+    def extra(ax, x_range, y_range):
+        ax.plot([left_x, right_x], [chord_y, chord_y], color="#8c5a4a", lw=lw(1.3), zorder=4)
+        annotate_horizontal_line_label(ax, x_range, y_range, chord_y)
+
+    return warnings + render_quadratic_scene(output_path, [eq_left, eq_right], points=points, extra_draw=extra,
+                                             x_candidates=[left_x, right_x, 0], y_candidates=[chord_y, 0])
+
+
+def render_two_origin_parabolas_parallelogram(spec, output_path):
+    eq1 = parse_y_equation(spec.get("equation1") or "y=1/3*x^2")
+    eq2 = parse_y_equation(spec.get("equation2") or "y=x^2")
+    vertical_x = parse_number(spec.get("vertical_x"), 3)
+    y1 = equation_value(eq1, vertical_x)
+    y2 = equation_value(eq2, vertical_x)
+    low, high = sorted([y1, y2])
+    height = high - low
+    points = [
+        point_item("A", 0, height),
+        point_item("B", vertical_x, high),
+        point_item("C", vertical_x, low),
+        point_item("D", 0, 0),
+    ]
+
+    def extra(ax, x_range, y_range):
+        ax.plot([vertical_x, vertical_x], [low, high], color="#777777", lw=lw(1.0), zorder=2)
+        annotate_axis_value(ax, x_range, y_range, "x", vertical_x, "below")
+
+    return render_quadratic_scene(output_path, [eq1, eq2], points=points, polygons=[points], extra_draw=extra,
+                                  x_candidates=[0, vertical_x], y_candidates=[0, low, high, height])
+
+
+def render_parabola_diamond_on_axes(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=1/4*x^2")
+    a, b, c = quadratic_coefficients(equation)
+    root = parse_number(spec.get("point_x"), 1 / abs(a) if abs(a) > 1e-9 else 4)
+    y_value = equation_value(equation, root)
+    points = [
+        point_item("A", -root, y_value),
+        point_item("O", 0, 0),
+        point_item("B", root, y_value),
+        point_item("C", 0, y_value * 2),
+    ]
+    return render_quadratic_scene(output_path, [equation], points=points, polygons=[points],
+                                  x_candidates=[-root, root, 0], y_candidates=[0, y_value * 2])
+
+
+def render_two_parabolas_square(spec, output_path):
+    eq_top = parse_y_equation(spec.get("equation_top") or spec.get("equation1") or "y=x^2")
+    eq_bottom = parse_y_equation(spec.get("equation_bottom") or spec.get("equation2") or "y=-1/2*x^2")
+    x_value = parse_number(spec.get("point_x"), 2)
+    y_top = equation_value(eq_top, x_value)
+    y_bottom = equation_value(eq_bottom, x_value)
+    points = [
+        point_item("A", -x_value, y_top),
+        point_item("B", x_value, y_top),
+        point_item("C", x_value, y_bottom),
+        point_item("D", -x_value, y_bottom),
+    ]
+    return render_quadratic_scene(output_path, [eq_top, eq_bottom], points=points, polygons=[points],
+                                  x_candidates=[-x_value, x_value, 0], y_candidates=[y_top, y_bottom, 0])
+
+
+def render_two_parabolas_shared_vertex_intersections(spec, output_path):
+    eq1 = parse_y_equation(spec.get("equation1") or "y=x^2-9")
+    eq2 = parse_y_equation(spec.get("equation2") or "y=-(x-3)^2")
+    coeff1 = quadratic_coefficients(eq1)
+    coeff2 = quadratic_coefficients(eq2)
+    roots = quadratic_roots_from_coeffs(coeff1[0] - coeff2[0], coeff1[1] - coeff2[1], coeff1[2] - coeff2[2])
+    warnings = []
+    if len(roots) < 2:
+        warnings.append("shared-vertex template needs two intersections")
+    points = [
+        point_item("A", *quadratic_vertex(coeff1)),
+        point_item("B", *quadratic_vertex(coeff2)),
+    ]
+    for index, root in enumerate(roots[:2]):
+        points.append(point_item(chr(ord("C") + index), root, equation_value(eq1, root)))
+    return warnings + render_quadratic_scene(output_path, [eq1, eq2], points=points,
+                                             x_candidates=roots + [0], y_candidates=[0])
+
+
+def render_line_to_parabola_quadrant_match(spec, output_path):
+    line_eq = parse_y_equation(spec.get("line_equation") or "y=x+1")
+    parabola_eq = parse_y_equation(spec.get("parabola_equation") or spec.get("parabola_form") or "y=-(x+1)^2+1")
+    x_range = parse_range(spec.get("x_range"), (-4, 4))
+    y_values = y_values_for_equations([line_eq, parabola_eq], x_range) + [0]
+    y_range = pad_range(min(y_values), max(y_values), 0.18, 2.0)
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    x = np.linspace(x_range[0], x_range[1], 1200)
+    ax.plot(x, safe_eval(line_eq["expr"], x), color="#555555", lw=lw(1.5), zorder=3)
+    ax.plot(x, safe_eval(parabola_eq["expr"], x), color="#1f77b4", lw=lw(2), zorder=3)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_linear_basic_intercepts(spec, output_path):
+    lines = parse_line_equations(spec.get("equation") or spec.get("line_equation") or "y=-x+2")
+    points = []
+    for line in lines[:1]:
+        points.extend(line_axis_intercepts(line))
+    x_candidates = [point["x"] for point in points] + [0]
+    y_candidates = [point["y"] for point in points] + [0]
+    return render_linear_scene(output_path, lines[:1], points=points, guides=False,
+                               x_candidates=x_candidates, y_candidates=y_candidates)
+
+
+def render_linear_point_guides(spec, output_path):
+    lines = parse_line_equations(spec.get("equation") or spec.get("line_equation") or "y=x+1")
+    points = parse_named_points(spec.get("points", ""))
+    if not points and lines:
+        x_values = [parse_number(item, 0) for item in split_csv_outside_parentheses(spec.get("guide_xs", ""))]
+        labels = parse_labels(spec.get("point_labels", "") or spec.get("labels", ""))
+        for index, x_value in enumerate(x_values):
+            y_value = line_y(lines[0], x_value)
+            if y_value is not None:
+                label = labels[index] if index < len(labels) else chr(ord("A") + index)
+                points.append(point_item(label, x_value, y_value))
+    if not points and lines:
+        for label, x_value in zip(["A", "B"], [-2, 3]):
+            y_value = line_y(lines[0], x_value)
+            if y_value is not None:
+                points.append(point_item(label, x_value, y_value))
+    return render_linear_scene(output_path, lines, points=points, guides=True)
+
+
+def render_linear_axis_triangle(spec, output_path):
+    line = parse_line_equation(spec.get("equation") or spec.get("line_equation") or "y=-1/3*x+2")
+    vertical_x = spec.get("vertical_x")
+    points = []
+    if vertical_x not in (None, ""):
+        vx = parse_number(vertical_x, 5)
+        vy = line_y(line, vx) or 0
+        points = [point_item("A", vx, vy), point_item("B", line_x_at_y(line, 0) or 0, 0), point_item("C", vx, 0)]
+    else:
+        points = [point_item("A", line_x_at_y(line, 0) or 0, 0), point_item("B", 0, line_y(line, 0) or 0), point_item("O", 0, 0)]
+    return render_linear_scene(output_path, [line], points=points, polygons=[points], guides=False,
+                               x_candidates=[point["x"] for point in points], y_candidates=[point["y"] for point in points],
+                               shade_color="#f6c7d7")
+
+
+def render_linear_two_lines_region(spec, output_path):
+    lines = parse_line_equations(spec.get("equations") or spec.get("equation") or "y=-x+3; y=1/2*x+1")
+    points = parse_named_points(spec.get("points", ""))
+    warnings = []
+    if not points and len(lines) >= 2:
+        inter = line_intersection(lines[0], lines[1])
+        if inter:
+            points.append(point_item("A", inter[0], inter[1]))
+        for label, line in zip(["B", "C"], lines[:2]):
+            x0 = line_x_at_y(line, 0)
+            if x0 is not None:
+                points.append(point_item(label, x0, 0))
+        if len(points) < 3:
+            for label, line in zip(["B", "C"], lines[:2]):
+                y0 = line_y(line, 0)
+                if y0 is not None:
+                    points.append(point_item(label, 0, y0))
+    if len(points) < 3:
+        warnings.append("linear region template needs at least three points")
+    polygon = points[:4] if len(points) >= 4 else points[:3]
+    return warnings + render_linear_scene(output_path, lines, points=points, polygons=[polygon] if len(polygon) >= 3 else [],
+                                          guides=True, shade_color="#f4c7b8")
+
+
+def render_linear_square_under_line(spec, output_path):
+    line = parse_line_equation(spec.get("equation") or spec.get("line_equation") or "y=1/3*x+1")
+    x1 = parse_number(spec.get("x_left"), 2)
+    side = parse_number(spec.get("side"), 1)
+    x2 = x1 + side
+    y1 = line_y(line, x1) or side
+    y2 = line_y(line, x2) or side
+    bottom = min(y1, y2) - side
+    square1 = [
+        point_item("", x1, bottom),
+        point_item("", x1 + side, bottom),
+        point_item("", x1 + side, bottom + side),
+        point_item("", x1, bottom + side),
+    ]
+    square2 = [
+        point_item("", x2, bottom),
+        point_item("", x2 + side, bottom),
+        point_item("", x2 + side, bottom + side),
+        point_item("", x2, bottom + side),
+    ]
+    points = [point_item("1", 0, line_y(line, 0) or 0)]
+
+    def extra(ax, x_range, y_range):
+        for square, color in ((square1, "#f6c7d7"), (square2, "white")):
+            ax.add_patch(plt.Polygon([(p["x"], p["y"]) for p in square], closed=True,
+                                     facecolor=color, edgecolor="black", lw=lw(1.0), zorder=3))
+
+    return render_linear_scene(output_path, [line], points=points, extra_draw=extra,
+                               x_candidates=[0, x1, x2 + side], y_candidates=[0, bottom + side, line_y(line, x2 + side) or 0])
+
+
+def render_grid_number_table(spec, output_path):
+    rows = bounded_count(spec.get("rows"), 3, 2, 8)
+    cols = bounded_count(spec.get("cols"), 3, 2, 8)
+    entries = {}
+    for item in split_semicolon_outside_parentheses(spec.get("entries", "")):
+        parts = [part.strip() for part in item.split(",")]
+        if len(parts) >= 3:
+            entries[(int(parse_number(parts[0], 1)) - 1, int(parse_number(parts[1], 1)) - 1)] = parts[2]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, cols, rows)
+    for r in range(rows):
+        for c in range(cols):
+            ax.add_patch(plt.Rectangle((c, rows - r - 1), 1, 1, facecolor="white", edgecolor="black", lw=lw(0.8)))
+            text = entries.get((r, c), "")
+            if text:
+                ax.text(c + 0.5, rows - r - 0.5, text, fontsize=fs(9), ha="center", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_tiled_rectangles_layout(spec, output_path):
+    cols = bounded_count(spec.get("cols"), 4, 2, 8)
+    rows = bounded_count(spec.get("rows"), 2, 2, 5)
+    cell_w = parse_length(spec.get("cell_width"), 2)
+    cell_h = parse_length(spec.get("cell_height"), 1.25)
+    offset = parse_length(spec.get("offset"), cell_w * 0.5)
+    width = cols * cell_w
+    height = rows * cell_h
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    for r in range(rows):
+        row_offset = offset if r % 2 == 1 else 0
+        for c in range(cols):
+            x = c * cell_w + row_offset
+            if x + cell_w > width + 1e-9:
+                continue
+            ax.add_patch(plt.Rectangle((x, r * cell_h), cell_w, cell_h,
+                                       facecolor="#ead8a6", edgecolor="black", lw=lw(0.8)))
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="none", edgecolor="black", lw=lw(1.1)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def regular_polygon_vertices(cx, cy, radius, sides, rotation=0.0):
+    return [
+        (
+            cx + radius * math.cos(rotation + 2 * math.pi * index / sides),
+            cy + radius * math.sin(rotation + 2 * math.pi * index / sides),
+        )
+        for index in range(sides)
+    ]
+
+
+def reflect_point_across_line(point, start, end):
+    px, py = point
+    x1, y1 = start
+    x2, y2 = end
+    dx = x2 - x1
+    dy = y2 - y1
+    length_sq = dx * dx + dy * dy
+    if length_sq < 1e-12:
+        return point
+    t = ((px - x1) * dx + (py - y1) * dy) / length_sq
+    foot_x = x1 + t * dx
+    foot_y = y1 + t * dy
+    return 2 * foot_x - px, 2 * foot_y - py
+
+
+def rightmost_edge(vertices):
+    best = None
+    best_x = None
+    count = len(vertices)
+    for index in range(count):
+        edge = (vertices[index], vertices[(index + 1) % count])
+        mid_x = (edge[0][0] + edge[1][0]) / 2
+        if best_x is None or mid_x > best_x:
+            best_x = mid_x
+            best = edge
+    return best
+
+
+def render_regular_polygon_chain(spec, output_path):
+    sides = bounded_count(spec.get("sides"), 6, 3, 8)
+    count = bounded_count(spec.get("count"), 3, 1, 8)
+    side = parse_length(spec.get("side"), 1)
+    radius = side / (2 * math.sin(math.pi / sides))
+    first = regular_polygon_vertices(radius, radius * 1.2, radius, sides, math.pi / sides)
+    polygons = [first]
+    for _ in range(1, count):
+        edge = rightmost_edge(polygons[-1])
+        polygons.append([reflect_point_across_line(point, edge[0], edge[1]) for point in polygons[-1]])
+    xs = [x for polygon in polygons for x, _ in polygon]
+    ys = [y for polygon in polygons for _, y in polygon]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    padding = radius * 0.25
+    width = max_x - min_x + padding * 2
+    height = max_y - min_y + padding * 2
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    for polygon in polygons:
+        verts = [(x - min_x + padding, y - min_y + padding) for x, y in polygon]
+        ax.add_patch(plt.Polygon(verts, closed=True, facecolor="#e8e0ef", edgecolor="#6a5f74", lw=lw(1.0)))
+        for x, y in verts:
+            ax.scatter([x], [y], color="#c26d3d", s=marker_area(10), zorder=5)
+    if str(spec.get("show_count_labels", "false")).lower() == "true":
+        ax.text(width * 0.5, -height * 0.08, f"{count}", fontsize=fs(9), ha="center", va="top")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_rectangle_side_point_triangle(spec, output_path):
+    width = parse_length(spec.get("width"), 24)
+    height = parse_length(spec.get("height"), 32)
+    point = str(spec.get("point_side") or "bottom").strip().lower()
+    t = parse_number(spec.get("point_ratio"), 0.45)
+    t = max(0.05, min(0.95, t))
+    vertices = {
+        "A": (0, height),
+        "B": (0, 0),
+        "C": (width, 0),
+        "D": (width, height),
+    }
+    if point == "right":
+        p = (width, height * t)
+    elif point == "left":
+        p = (0, height * t)
+    elif point == "top":
+        p = (width * t, height)
+    else:
+        p = (width * t, 0)
+    triangle_names = parse_labels(spec.get("triangle_points") or "A,B,P")
+    point_map = {**vertices, "P": p, "Q": p}
+    triangle = [point_map.get(name, p) for name in triangle_names[:3]]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Polygon(triangle, closed=True, facecolor="#d8c8e8", edgecolor="#6a5f74", lw=lw(1.0), alpha=0.75))
+    draw_dimension(ax, (0, height), (width, height), length_label(spec.get("width"), width, " cm"), (0, height * 0.08))
+    draw_dimension(ax, (0, 0), (0, height), length_label(spec.get("height"), height, " cm"), (-width * 0.08, 0))
+    for label, (x, y) in {**vertices, "P": p}.items():
+        ax.text(x, y, label, fontsize=fs(9), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=fs(0.4)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_rectangle_cut_corner(spec, output_path):
+    width = parse_length(spec.get("width"), 18)
+    height = parse_length(spec.get("height"), 12)
+    top_cut = parse_length(spec.get("top_cut"), width * 0.28)
+    right_cut = parse_length(spec.get("right_cut"), height * 0.25)
+    e = (top_cut, height)
+    f = (width, right_cut)
+    shaded = [(0, height), e, f, (width, 0), (0, 0)]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Polygon(shaded, closed=True, facecolor="#f4df86", edgecolor="#a3863a", lw=lw(1.0), alpha=0.75))
+    ax.plot([e[0], f[0]], [e[1], f[1]], color="#777777", lw=lw(1.0))
+    draw_dimension(ax, (0, height), e, length_label(spec.get("top_cut"), top_cut, " m"), (0, height * 0.09))
+    draw_dimension(ax, (width, 0), f, length_label(spec.get("right_cut"), right_cut, " m"), (width * 0.09, 0))
+    for label, point in {"A": (0, height), "B": (0, 0), "C": (width, 0), "D": (width, height), "E": e, "F": f}.items():
+        ax.text(point[0], point[1], label, fontsize=fs(8), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=fs(0.35)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_rectangle_expanding_sides(spec, output_path):
+    width = parse_length(spec.get("width"), 60)
+    height = parse_length(spec.get("height"), 33)
+    right_expand = parse_length(spec.get("right_expand"), width * 0.25)
+    bottom_expand = parse_length(spec.get("bottom_expand"), height * 0.35)
+    total_width = width + right_expand
+    total_height = height + bottom_expand
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, total_width, total_height)
+    ax.add_patch(plt.Rectangle((0, bottom_expand), width, height, facecolor="#ead8ee", edgecolor="black", lw=lw(1.0), alpha=0.75))
+    ax.add_patch(plt.Rectangle((width, bottom_expand), right_expand, height, facecolor="#ead8ee", edgecolor="black", lw=lw(1.0), alpha=0.75))
+    ax.add_patch(plt.Rectangle((0, 0), width, bottom_expand, facecolor="white", edgecolor="black", lw=lw(1.0)))
+    ax.annotate("", xy=(width + right_expand * 0.35, bottom_expand + height * 0.5),
+                xytext=(width + right_expand * 0.75, bottom_expand + height * 0.5),
+                arrowprops=dict(arrowstyle="->", lw=lw(1.4), color="#e85b8b"))
+    ax.annotate("", xy=(width * 0.5, bottom_expand * 0.25), xytext=(width * 0.5, bottom_expand * 0.75),
+                arrowprops=dict(arrowstyle="->", lw=lw(1.4), color="#e85b8b"))
+    draw_dimension(ax, (0, total_height), (width, total_height), length_label(spec.get("width"), width, " cm"), (0, total_height * 0.07))
+    draw_dimension(ax, (0, bottom_expand), (0, total_height), length_label(spec.get("height"), height, " cm"), (-total_width * 0.07, 0))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_three_semicircles(spec, output_path):
+    total = parse_length(spec.get("diameter"), 20)
+    split = parse_length(spec.get("split"), total * 0.5)
+    split = max(total * 0.15, min(total * 0.85, split))
+    radius = total / 2
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, total, radius)
+    theta = np.linspace(0, math.pi, 240)
+    outer_x = radius + radius * np.cos(theta)
+    outer_y = radius * np.sin(theta)
+    left_r = split / 2
+    right_r = (total - split) / 2
+    left_x = left_r + left_r * np.cos(theta)
+    left_y = left_r * np.sin(theta)
+    right_x = split + right_r + right_r * np.cos(theta)
+    right_y = right_r * np.sin(theta)
+    fill_x = list(outer_x) + list(reversed(right_x)) + list(reversed(left_x))
+    fill_y = list(outer_y) + list(reversed(right_y)) + list(reversed(left_y))
+    ax.fill(fill_x, fill_y, color="#f2cf73", alpha=0.75, zorder=1)
+    ax.plot(outer_x, outer_y, color="black", lw=lw(1.1))
+    ax.plot(left_x, left_y, color="black", lw=lw(1.0))
+    ax.plot(right_x, right_y, color="black", lw=lw(1.0))
+    ax.plot([0, total], [0, 0], color="black", lw=lw(1.0))
+    ax.text(0, 0, "A", fontsize=fs(9), ha="right", va="top")
+    ax.text(split, 0, "C", fontsize=fs(9), ha="center", va="top")
+    ax.text(total, 0, "B", fontsize=fs(9), ha="left", va="top")
+    draw_dimension(ax, (0, 0), (total, 0), length_label(spec.get("diameter"), total, " cm"), (0, -radius * 0.18))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_folded_rectangle_overlap(spec, output_path):
+    width = parse_length(spec.get("width"), 12)
+    height = parse_length(spec.get("height"), 8)
+    fold_x = parse_length(spec.get("fold_x"), width * 0.58)
+    right_height = parse_length(spec.get("right_height"), height * 0.72)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Polygon([(0, 0), (fold_x, 0), (fold_x, height), (0, height)],
+                             closed=True, facecolor="#cfe8d2", edgecolor="black", lw=lw(1.0), alpha=0.75))
+    ax.add_patch(plt.Polygon([(fold_x, 0), (width, 0), (width, right_height), (fold_x, height)],
+                             closed=True, facecolor="#a9d4c8", edgecolor="black", lw=lw(1.0), alpha=0.85))
+    ax.plot([0, fold_x], [0, height], color="#777777", lw=lw(0.9))
+    draw_dimension(ax, (0, 0), (0, height), length_label(spec.get("height"), height, " cm"), (-width * 0.08, 0))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_square_internal_rectangles(spec, output_path):
+    side = parse_length(spec.get("side"), 10)
+    x = parse_length(spec.get("inner_x"), side * 0.35)
+    y = parse_length(spec.get("inner_y"), side * 0.55)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, side, side)
+    ax.add_patch(plt.Rectangle((0, 0), side, side, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.plot([x, x], [0, side], color="#777777", lw=lw(0.9))
+    ax.plot([0, side], [y, y], color="#777777", lw=lw(0.9))
+    ax.add_patch(plt.Rectangle((x, 0), side - x, y, facecolor="#cde8c6", edgecolor="none", alpha=0.8))
+    labels = {"A": (0, side), "B": (0, 0), "C": (side, 0), "D": (side, side),
+              "P": (x, y), "F": (x, 0), "G": (side, y), "H": (x, side)}
+    for label, point in labels.items():
+        ax.text(point[0], point[1], label, fontsize=fs(8), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=fs(0.35)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_regular_polygon_diagonals(spec, output_path):
+    sides = bounded_count(spec.get("sides"), 5, 5, 8)
+    radius = parse_length(spec.get("side"), 1.0)
+    verts = regular_polygon_vertices(radius * 1.4, radius * 1.45, radius, sides, math.pi / 2)
+    xs = [x for x, _ in verts]
+    ys = [y for _, y in verts]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, max(xs) - min(xs), max(ys) - min(ys))
+    shifted = [(x - min(xs), y - min(ys)) for x, y in verts]
+    ax.add_patch(plt.Polygon(shifted, closed=True, facecolor="white", edgecolor="black", lw=lw(1.0)))
+    for i in range(sides):
+        for j in range(i + 2, sides):
+            if i == 0 and j == sides - 1:
+                continue
+            ax.plot([shifted[i][0], shifted[j][0]], [shifted[i][1], shifted[j][1]], color="#777777", lw=lw(0.7))
+    for label, point in zip(list("ABCDE")[:sides], shifted):
+        ax.text(point[0], point[1], label, fontsize=fs(8), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.8, pad=fs(0.3)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_linear_parallel_lines(spec, output_path):
+    base = parse_line_equation(spec.get("equation") or "y=-x+2")
+    offsets = [parse_number(item, 0) for item in split_csv_outside_parentheses(spec.get("offsets", "-2,2"))]
+    lines = [base]
+    for offset in offsets:
+        lines.append({"raw": base["raw"], "a": base["a"], "b": base["b"], "c": base["c"] + offset})
+    points = parse_named_points(spec.get("points", ""))
+    return render_linear_scene(output_path, lines, points=points, guides=True)
+
+
+def render_multiple_choice_linear_position(spec, output_path):
+    equations = parse_line_equations(spec.get("choices") or spec.get("equations") or "y=-x+1; y=x+1; y=-x-1; y=x-1")
+    equations = equations[:5]
+    labels = ["①", "②", "③", "④", "⑤"]
+    x_range = parse_range(spec.get("x_range"), (-3, 3))
+    y_values = line_sample_y_values(equations, x_range) + [0]
+    y_range = pad_range(min(y_values), max(y_values), 0.16, 2.0)
+    fig, axes = plt.subplots(3, 2, figsize=CHOICE_FIGURE_SIZE_INCHES)
+    axes_flat = list(axes.flatten())
+    xs = np.linspace(x_range[0], x_range[1], 300)
+    for index, ax in enumerate(axes_flat):
+        if index >= len(equations):
+            ax.axis("off")
+            continue
+        setup_choice_axes(ax, x_range, y_range)
+        line = equations[index]
+        if abs(line["b"]) < 1e-9:
+            ax.axvline(-line["c"] / line["a"], color="black", lw=lw(1.4))
+        else:
+            ax.plot(xs, [line_y(line, x) for x in xs], color="black", lw=lw(1.4))
+        ax.text(0.04, 0.92, labels[index], transform=ax.transAxes, ha="left", va="top", fontsize=fs(9))
+    fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.98, wspace=0.18, hspace=0.28)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
 def should_auto_use_xintercepts_vertex_triangle(spec):
     if spec.get("template"):
         return False
@@ -1098,6 +1878,22 @@ def parse_length(value, default=1.0):
     return parse_number(text, default)
 
 
+def length_label(value, fallback, unit=""):
+    text = str(value or "").strip()
+    if text:
+        return text + unit
+    formatted = format_number(fallback)
+    return (formatted if formatted else str(fallback)) + unit
+
+
+def bounded_count(value, default, minimum=1, maximum=12):
+    try:
+        count = int(parse_number(value, default))
+    except Exception:
+        count = default
+    return max(minimum, min(maximum, count))
+
+
 def setup_plain_geometry_axes(ax, width, height):
     margin = max(width, height) * 0.15
     ax.set_xlim(-margin, width + margin)
@@ -1121,34 +1917,42 @@ def render_rectangle_cross_road(spec, output_path, slanted=False, multi=False):
     width = parse_length(spec.get("width"), 40)
     height = parse_length(spec.get("height"), 30)
     road_width = parse_length(spec.get("road_width"), min(width, height) * 0.12)
+    road_count = bounded_count(spec.get("road_count"), 3, 1, 7)
     fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
     setup_plain_geometry_axes(ax, width, height)
-    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="#efe1b0", edgecolor="black", lw=lw(1.2)))
+    field = plt.Rectangle((0, 0), width, height, facecolor="#efe1b0", edgecolor="black", lw=lw(1.2))
+    ax.add_patch(field)
 
     if slanted or multi:
         strips = [(-width * 0.15, width * 0.35, width * 0.55, width * 1.05)]
         if multi:
-            strips.append((width * 0.65, width * 0.95, width * 1.15, width * 0.85))
+            spacing = width / max(road_count, 1)
+            strips = []
+            for index in range(road_count):
+                center = spacing * (index + 0.55)
+                strips.append((center - road_width, center, center + width * 0.2, center - road_width + width * 0.2))
         for x_bottom1, x_bottom2, x_top2, x_top1 in strips:
-            ax.add_patch(plt.Polygon(
+            road = plt.Polygon(
                 [(x_bottom1, 0), (x_bottom2, 0), (x_top2, height), (x_top1, height)],
-                closed=True, facecolor="white", edgecolor="#777777", lw=lw(1.0), alpha=0.95
-            ))
-        ax.add_patch(plt.Polygon(
+                closed=True, facecolor="white", edgecolor="none", alpha=0.95
+            )
+            road.set_clip_path(field)
+            ax.add_patch(road)
+        crossing = plt.Polygon(
             [(0, height * 0.45), (width, height * 0.65), (width, height * 0.65 + road_width), (0, height * 0.45 + road_width)],
-            closed=True, facecolor="white", edgecolor="#777777", lw=lw(1.0), alpha=0.95
-        ))
+            closed=True, facecolor="white", edgecolor="none", alpha=0.95
+        )
+        crossing.set_clip_path(field)
+        ax.add_patch(crossing)
+        ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="none", edgecolor="black", lw=lw(1.2), zorder=5))
     else:
         cx = width * 0.5 - road_width / 2
         cy = height * 0.5 - road_width / 2
         ax.add_patch(plt.Rectangle((cx, 0), road_width, height, facecolor="white", edgecolor="#777777", lw=lw(1.0)))
         ax.add_patch(plt.Rectangle((0, cy), width, road_width, facecolor="white", edgecolor="#777777", lw=lw(1.0)))
 
-    draw_dimension(ax, (0, height), (width, height), format_number(width) + " m", (0, height * 0.09))
-    draw_dimension(ax, (0, 0), (0, height), format_number(height) + " m", (-width * 0.08, 0))
-    if str(spec.get("road_width", "")).strip():
-        ax.text(width * 0.82, height * 0.12, str(spec.get("road_width")).strip(),
-                fontsize=fs(9), ha="center", va="center")
+    draw_dimension(ax, (0, height), (width, height), length_label(spec.get("width"), width, " m"), (0, height * 0.09))
+    draw_dimension(ax, (0, 0), (0, height), length_label(spec.get("height"), height, " m"), (-width * 0.08, 0))
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return []
@@ -1165,10 +1969,11 @@ def render_rectangular_park_border(spec, output_path):
     ax.add_patch(plt.Rectangle((0, 0), outer_width, outer_height, facecolor="#c7b08a", edgecolor="black", lw=lw(1.2)))
     ax.add_patch(plt.Rectangle((border, border), inner_width, inner_height, facecolor="#cde8c6", edgecolor="black", lw=lw(1.0)))
     draw_dimension(ax, (border, border + inner_height), (border + inner_width, border + inner_height),
-                   format_number(inner_width) or str(spec.get("inner_width") or ""), (0, border * 0.45))
+                   length_label(spec.get("inner_width"), inner_width), (0, border * 0.45))
     draw_dimension(ax, (border, border), (border, border + inner_height),
-                   format_number(inner_height) or str(spec.get("inner_height") or ""), (-border * 0.45, 0))
-    ax.text(outer_width - border / 2, outer_height / 2, format_number(border) + " m", fontsize=fs(8), rotation=90,
+                   length_label(spec.get("inner_height"), inner_height), (-border * 0.45, 0))
+    ax.text(outer_width - border / 2, outer_height / 2, length_label(spec.get("border_width"), border, " m"),
+            fontsize=fs(8), rotation=90,
             ha="center", va="center", bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
@@ -1177,8 +1982,15 @@ def render_rectangular_park_border(spec, output_path):
 
 def render_two_squares_on_segment(spec, output_path):
     total = parse_length(spec.get("total_length"), 11)
-    left_side = total * 0.62
-    right_side = total - left_side
+    left_raw = spec.get("left_side") or spec.get("left_square_side")
+    right_raw = spec.get("right_side") or spec.get("right_square_side")
+    left_side = parse_length(left_raw, total * 0.62)
+    right_side = parse_length(right_raw, max(total - left_side, total * 0.25))
+    if left_side + right_side > total * 1.25 or left_side + right_side < total * 0.75:
+        scale = total / max(left_side + right_side, 1)
+        left_side *= scale
+        right_side *= scale
+    total = left_side + right_side
     fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
     setup_plain_geometry_axes(ax, total, max(left_side, right_side))
     ax.add_patch(plt.Rectangle((0, 0), left_side, left_side, facecolor="#f1d36f", edgecolor="black", lw=lw(1.1)))
@@ -1186,7 +1998,9 @@ def render_two_squares_on_segment(spec, output_path):
     ax.text(0, -total * 0.08, "A", fontsize=fs(10), ha="center", va="top")
     ax.text(left_side, -total * 0.08, "C", fontsize=fs(10), ha="center", va="top")
     ax.text(total, -total * 0.08, "B", fontsize=fs(10), ha="center", va="top")
-    draw_dimension(ax, (0, 0), (total, 0), format_number(total) + " cm", (0, -total * 0.16))
+    draw_dimension(ax, (0, 0), (left_side, 0), length_label(left_raw, left_side), (0, -total * 0.14))
+    draw_dimension(ax, (left_side, 0), (total, 0), length_label(right_raw, right_side), (0, -total * 0.14))
+    draw_dimension(ax, (0, 0), (total, 0), length_label(spec.get("total_length"), total, " cm"), (0, -total * 0.26))
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return []
@@ -1207,8 +2021,243 @@ def render_open_box_net(spec, output_path, rectangular=False):
     ax.plot([paper_width - cut, paper_width - cut], [0, paper_height], color="#888888", lw=lw(0.8), ls="--")
     ax.plot([0, paper_width], [cut, cut], color="#888888", lw=lw(0.8), ls="--")
     ax.plot([0, paper_width], [paper_height - cut, paper_height - cut], color="#888888", lw=lw(0.8), ls="--")
-    draw_dimension(ax, (0, paper_height), (paper_width, paper_height), format_number(paper_width) + " cm", (0, paper_height * 0.1))
-    ax.text(paper_width + paper_width * 0.06, cut / 2, format_number(cut) + " cm", fontsize=fs(8), ha="left", va="center")
+    draw_dimension(ax, (0, paper_height), (paper_width, paper_height),
+                   length_label(spec.get("paper_width") or paper_side, paper_width, " cm"), (0, paper_height * 0.1))
+    draw_dimension(ax, (0, 0), (0, paper_height),
+                   length_label(spec.get("paper_height") or paper_side, paper_height, " cm"), (-paper_width * 0.08, 0))
+    ax.text(paper_width + paper_width * 0.06, cut / 2, length_label(spec.get("cut_side"), cut, " cm"),
+            fontsize=fs(8), ha="left", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_square_expanded_garden(spec, output_path):
+    side = parse_length(spec.get("inner_side"), 8)
+    right = parse_length(spec.get("expand_right"), 9)
+    bottom = parse_length(spec.get("expand_bottom"), 6)
+    width = side + right
+    height = side + bottom
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, bottom), side, side, facecolor="#cde8c6", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Rectangle((side, bottom), right, side, facecolor="#ead8a6", edgecolor="black", lw=lw(1.0)))
+    ax.add_patch(plt.Rectangle((0, 0), width, bottom, facecolor="#ead8a6", edgecolor="black", lw=lw(1.0)))
+    draw_dimension(ax, (0, height), (side, height), str(spec.get("inner_side") or format_number(side)), (0, height * 0.08))
+    draw_dimension(ax, (side, height), (width, height), str(spec.get("expand_right") or format_number(right)), (0, height * 0.08))
+    draw_dimension(ax, (width, bottom), (width, height), str(spec.get("inner_side") or format_number(side)), (width * 0.08, 0))
+    draw_dimension(ax, (width, 0), (width, bottom), str(spec.get("expand_bottom") or format_number(bottom)), (width * 0.08, 0))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_rectangle_diagonal_flower_path(spec, output_path):
+    width = parse_length(spec.get("width"), parse_length(spec.get("width_ratio"), 2) * 8)
+    height = parse_length(spec.get("height"), parse_length(spec.get("height_ratio"), 1) * 8)
+    path_width = parse_length(spec.get("path_width"), 2)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="#f2cf73", edgecolor="black", lw=lw(1.1)))
+    offset = path_width / max(math.sqrt(width * width + height * height), 1) * width
+    ax.add_patch(plt.Polygon([(0, offset), (offset, 0), (width, height - offset), (width - offset, height)],
+                             closed=True, facecolor="white", edgecolor="#777777", lw=lw(1.0)))
+    draw_dimension(ax, (0, height), (width, height), format_number(width), (0, height * 0.08))
+    draw_dimension(ax, (0, 0), (0, height), format_number(height), (-width * 0.08, 0))
+    ax.text(width * 0.58, height * 0.42, str(spec.get("path_width") or format_number(path_width)),
+            fontsize=fs(8), ha="center", va="center",
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_growing_rectangle(spec, output_path):
+    width = parse_length(spec.get("initial_width"), 30)
+    height = parse_length(spec.get("initial_height"), 24)
+    dw = str(spec.get("width_change_per_time") or "-2").strip()
+    dh = str(spec.get("height_change_per_time") or "3").strip()
+    t = str(spec.get("time_label") or "x").strip()
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="#d9ecff", edgecolor="black", lw=lw(1.1)))
+    draw_dimension(ax, (0, height), (width, height), format_number(width), (0, height * 0.1))
+    draw_dimension(ax, (0, 0), (0, height), format_number(height), (-width * 0.08, 0))
+    ax.annotate(dw + t, xy=(width * 0.75, height * 0.15), xytext=(width * 0.95, height * 0.15),
+                arrowprops=dict(arrowstyle="->", lw=lw(1.0)), fontsize=fs(8), ha="center", va="center")
+    ax.annotate(dh + t, xy=(width * 0.15, height * 0.75), xytext=(width * 0.15, height * 0.95),
+                arrowprops=dict(arrowstyle="->", lw=lw(1.0)), fontsize=fs(8), ha="center", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_folded_tray(spec, output_path):
+    sheet_width = parse_length(spec.get("sheet_width"), 40)
+    fold_height = parse_length(spec.get("fold_height"), 8)
+    bottom_width = max(sheet_width - 2 * fold_height, sheet_width * 0.35)
+    height = fold_height * 1.2
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, sheet_width, height)
+    left = (sheet_width - bottom_width) / 2
+    ax.add_patch(plt.Polygon([(left, 0), (left + bottom_width, 0), (sheet_width, height), (0, height)],
+                             closed=True, facecolor="#d9ecff", edgecolor="black", lw=lw(1.1)))
+    ax.plot([left, left], [0, height * 0.85], color="#777777", ls="--", lw=lw(0.9))
+    ax.plot([left + bottom_width, left + bottom_width], [0, height * 0.85], color="#777777", ls="--", lw=lw(0.9))
+    draw_dimension(ax, (0, height), (sheet_width, height), format_number(sheet_width), (0, height * 0.16))
+    ax.text(left / 2, height * 0.45, str(spec.get("fold_height") or "x"), fontsize=fs(9), ha="center", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_adjacent_rectangles(spec, output_path):
+    left_w = parse_length(spec.get("left_width"), 8)
+    left_h = parse_length(spec.get("left_height") or spec.get("shared_height"), 8)
+    right_w = parse_length(spec.get("right_width"), 6)
+    right_h = parse_length(spec.get("right_height") or spec.get("shared_height"), left_h)
+    width = left_w + right_w
+    height = max(left_h, right_h)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), left_w, left_h, facecolor="#d9ecff", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Rectangle((left_w, 0), right_w, right_h, facecolor="#f2cf73", edgecolor="black", lw=lw(1.1)))
+    draw_dimension(ax, (0, height), (left_w, height), str(spec.get("left_width") or format_number(left_w)), (0, height * 0.08))
+    draw_dimension(ax, (left_w, height), (width, height), str(spec.get("right_width") or format_number(right_w)), (0, height * 0.08))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_rectangle_point_triangle(spec, output_path):
+    width = parse_length(spec.get("width"), 10)
+    height = parse_length(spec.get("height"), 6)
+    top_dist = parse_length(spec.get("point_top_distance"), width * 0.45)
+    right_dist = parse_length(spec.get("point_right_distance"), height * 0.45)
+    p = point_item("P", top_dist, height)
+    b = point_item("B", width, height)
+    q = point_item("Q", width, height - right_dist)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Polygon([(p["x"], p["y"]), (b["x"], b["y"]), (q["x"], q["y"])],
+                             closed=True, facecolor="#f4c7b8", edgecolor="#8c5a4a", lw=lw(1.0), alpha=0.6))
+    draw_dimension(ax, (0, height), (width, height), length_label(spec.get("width"), width), (0, height * 0.1))
+    draw_dimension(ax, (0, 0), (0, height), length_label(spec.get("height"), height), (-width * 0.08, 0))
+    draw_dimension(ax, (0, height), (top_dist, height), length_label(spec.get("point_top_distance"), top_dist), (0, height * 0.22))
+    draw_dimension(ax, (width, height), (width, height - right_dist), length_label(spec.get("point_right_distance"), right_dist), (width * 0.1, 0))
+    plot_labeled_points(ax, [p, b, q])
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_moving_points_rectangle_triangle(spec, output_path):
+    width = parse_length(spec.get("rectangle_width"), 10)
+    height = parse_length(spec.get("rectangle_height"), 15)
+    p_speed = parse_length(spec.get("point_p_speed"), 1)
+    q_speed = parse_length(spec.get("point_q_speed"), 2)
+    total_speed = max(p_speed + q_speed, 1)
+    p_x = width * min(0.72, max(0.22, p_speed / total_speed))
+    q_y = height * min(0.78, max(0.25, q_speed / total_speed))
+    points = [point_item("P", p_x, height), point_item("C", width, 0), point_item("Q", width, q_y)]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Polygon([(p_x, height), (width, 0), (width, q_y)],
+                             closed=True, facecolor="#f4c7b8", edgecolor="#8c5a4a", lw=lw(1.0), alpha=0.6))
+    draw_dimension(ax, (0, height), (width, height), length_label(spec.get("rectangle_width"), width), (0, height * 0.1))
+    draw_dimension(ax, (0, 0), (0, height), length_label(spec.get("rectangle_height"), height), (-width * 0.08, 0))
+    time_label = str(spec.get("time_label") or "x")
+    ax.annotate(length_label(spec.get("point_p_speed"), p_speed) + time_label,
+                xy=(p_x * 0.5, height), xytext=(p_x * 0.5, height * 1.12),
+                arrowprops=dict(arrowstyle="->", lw=lw(0.9)), fontsize=fs(8), ha="center", va="center")
+    ax.annotate(length_label(spec.get("point_q_speed"), q_speed) + time_label,
+                xy=(width, q_y + (height - q_y) * 0.5), xytext=(width * 1.12, q_y + (height - q_y) * 0.5),
+                arrowprops=dict(arrowstyle="->", lw=lw(0.9)), fontsize=fs(8), ha="center", va="center")
+    plot_labeled_points(ax, points)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_right_isosceles_triangle_inner(spec, output_path, parallelogram=False):
+    leg = parse_length(spec.get("leg"), 10)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, leg, leg)
+    ax.add_patch(plt.Polygon([(0, 0), (leg, 0), (0, leg)], closed=True,
+                             facecolor="white", edgecolor="black", lw=lw(1.1)))
+    if parallelogram:
+        poly = [(leg * 0.18, 0), (leg * 0.58, 0), (leg * 0.42, leg * 0.42), (leg * 0.02, leg * 0.42)]
+        labels = ["A", "D", "E", "F"]
+    else:
+        poly = [(leg * 0.25, 0), (leg * 0.68, 0), (leg * 0.68, leg * 0.32), (leg * 0.25, leg * 0.32)]
+        labels = ["P", "Q", "C", "R"]
+    ax.add_patch(plt.Polygon(poly, closed=True, facecolor="#d9ecff", edgecolor="#1f77b4", lw=lw(1.0), alpha=0.75))
+    for label, (x, y) in zip(labels, poly):
+        ax.text(x, y, label, fontsize=fs(8), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=fs(0.5)))
+    draw_dimension(ax, (0, 0), (leg, 0), length_label(spec.get("leg"), leg), (0, -leg * 0.1))
+    draw_dimension(ax, (0, 0), (0, leg), length_label(spec.get("leg"), leg), (-leg * 0.1, 0))
+    ax.text(0, -leg * 0.06, "A", fontsize=fs(9), ha="center", va="top")
+    ax.text(leg, -leg * 0.06, "B", fontsize=fs(9), ha="center", va="top")
+    ax.text(0, leg + leg * 0.04, "C", fontsize=fs(9), ha="center", va="bottom")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_tiled_rectangle_corner_square(spec, output_path):
+    rows = int(parse_number(spec.get("tile_rows"), 3))
+    cols = int(parse_number(spec.get("tile_cols"), 5))
+    side = parse_length(spec.get("small_square_side"), 4)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, cols * side, rows * side)
+    for r in range(rows):
+        for c in range(cols):
+            color = "#f4c7b8" if r == 0 and c == cols - 1 else "white"
+            ax.add_patch(plt.Rectangle((c * side, r * side), side, side,
+                                       facecolor=color, edgecolor="black", lw=lw(0.8)))
+    ax.text((cols - 0.5) * side, side * 0.5, str(spec.get("small_square_side") or format_number(side)),
+            fontsize=fs(8), ha="center", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_circle_template(spec, output_path, semicircles=False):
+    outer = parse_length(spec.get("outer_radius") or spec.get("outer_diameter"), 6)
+    if semicircles or spec.get("outer_diameter"):
+        radius = outer / 2
+    else:
+        radius = outer
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, radius * 2, radius * 2)
+    center = (radius, radius)
+    outer_color = "#d9ecff"
+    inner_color = "white"
+    if str(spec.get("shade", "")).strip().lower() == "inner":
+        outer_color = "white"
+        inner_color = "#d9ecff"
+    ax.add_patch(plt.Circle(center, radius, facecolor=outer_color, edgecolor="black", lw=lw(1.1), alpha=0.7))
+    if semicircles:
+        left_diameter = parse_length(spec.get("left_inner_diameter"), radius)
+        right_diameter = parse_length(spec.get("right_inner_diameter"), radius)
+        left_radius = min(left_diameter / 2, radius)
+        right_radius = min(right_diameter / 2, radius)
+        ax.add_patch(plt.Circle((left_radius, radius), left_radius, facecolor="white", edgecolor="#777777", lw=lw(1.0)))
+        ax.add_patch(plt.Circle((radius * 2 - right_radius, radius), right_radius, facecolor="white", edgecolor="#777777", lw=lw(1.0)))
+    else:
+        if spec.get("inner_radius"):
+            inner_radius = parse_length(spec.get("inner_radius"), radius * 0.55)
+        else:
+            gap = parse_length(spec.get("radius_gap"), radius * 0.45)
+            inner_radius = max(radius - gap, radius * 0.2)
+        ax.add_patch(plt.Circle(center, inner_radius, facecolor=inner_color, edgecolor="#777777", lw=lw(1.0)))
+        ax.plot([center[0], center[0] + radius], [center[1], center[1]], color="#777777", lw=lw(0.8))
+        ax.text(center[0] + radius * 0.52, center[1] + radius * 0.08,
+                length_label(spec.get("outer_radius"), radius), fontsize=fs(8), ha="center", va="bottom")
+    ax.axis("off")
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return []
@@ -1235,20 +2284,92 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_parabola_family_origin(spec, output_path)
     elif template == "multiple_choice_parabola_position":
         unsupported = render_multiple_choice_parabola_position(spec, output_path)
+    elif template == "parabola_shift_from_base":
+        unsupported = render_parabola_shift_from_base(spec, output_path)
+    elif template == "two_parabolas_same_width_horizontal_chord":
+        unsupported = render_two_parabolas_same_width_horizontal_chord(spec, output_path)
+    elif template == "two_origin_parabolas_parallelogram":
+        unsupported = render_two_origin_parabolas_parallelogram(spec, output_path)
+    elif template == "parabola_diamond_on_axes":
+        unsupported = render_parabola_diamond_on_axes(spec, output_path)
+    elif template == "two_parabolas_square":
+        unsupported = render_two_parabolas_square(spec, output_path)
+    elif template == "two_parabolas_shared_vertex_intersections":
+        unsupported = render_two_parabolas_shared_vertex_intersections(spec, output_path)
+    elif template == "line_to_parabola_quadrant_match":
+        unsupported = render_line_to_parabola_quadrant_match(spec, output_path)
+    elif template == "linear_basic_intercepts":
+        unsupported = render_linear_basic_intercepts(spec, output_path)
+    elif template == "linear_point_guides":
+        unsupported = render_linear_point_guides(spec, output_path)
+    elif template == "linear_axis_triangle":
+        unsupported = render_linear_axis_triangle(spec, output_path)
+    elif template == "linear_two_lines_region":
+        unsupported = render_linear_two_lines_region(spec, output_path)
+    elif template == "linear_square_under_line":
+        unsupported = render_linear_square_under_line(spec, output_path)
+    elif template == "grid_number_table":
+        unsupported = render_grid_number_table(spec, output_path)
+    elif template == "tiled_rectangles_layout":
+        unsupported = render_tiled_rectangles_layout(spec, output_path)
+    elif template == "regular_polygon_chain":
+        unsupported = render_regular_polygon_chain(spec, output_path)
+    elif template == "rectangle_side_point_triangle":
+        unsupported = render_rectangle_side_point_triangle(spec, output_path)
+    elif template == "rectangle_cut_corner":
+        unsupported = render_rectangle_cut_corner(spec, output_path)
+    elif template == "rectangle_expanding_sides":
+        unsupported = render_rectangle_expanding_sides(spec, output_path)
+    elif template == "three_semicircles":
+        unsupported = render_three_semicircles(spec, output_path)
+    elif template == "folded_rectangle_overlap":
+        unsupported = render_folded_rectangle_overlap(spec, output_path)
+    elif template == "square_internal_rectangles":
+        unsupported = render_square_internal_rectangles(spec, output_path)
+    elif template == "regular_polygon_diagonals":
+        unsupported = render_regular_polygon_diagonals(spec, output_path)
+    elif template == "linear_parallel_lines":
+        unsupported = render_linear_parallel_lines(spec, output_path)
+    elif template == "multiple_choice_linear_position":
+        unsupported = render_multiple_choice_linear_position(spec, output_path)
+    elif template == "annulus_area":
+        unsupported = render_circle_template(spec, output_path)
+    elif template == "circle_with_two_semicircles":
+        unsupported = render_circle_template(spec, output_path, semicircles=True)
+    elif template == "rectangle_point_triangle":
+        unsupported = render_rectangle_point_triangle(spec, output_path)
     elif template == "rectangle_cross_road":
         unsupported = render_rectangle_cross_road(spec, output_path)
     elif template == "rectangle_slanted_cross_road":
         unsupported = render_rectangle_cross_road(spec, output_path, slanted=True)
     elif template == "rectangle_multi_slanted_roads":
         unsupported = render_rectangle_cross_road(spec, output_path, slanted=True, multi=True)
+    elif template == "square_expanded_garden":
+        unsupported = render_square_expanded_garden(spec, output_path)
     elif template == "rectangular_park_border":
         unsupported = render_rectangular_park_border(spec, output_path)
+    elif template == "rectangle_diagonal_flower_path":
+        unsupported = render_rectangle_diagonal_flower_path(spec, output_path)
     elif template in ("two_squares_on_segment", "two_squares_from_segment"):
         unsupported = render_two_squares_on_segment(spec, output_path)
+    elif template == "growing_rectangle":
+        unsupported = render_growing_rectangle(spec, output_path)
     elif template == "open_box_net_equal_cuts":
         unsupported = render_open_box_net(spec, output_path)
     elif template == "open_box_net_rectangular_paper":
         unsupported = render_open_box_net(spec, output_path, rectangular=True)
+    elif template == "folded_tray":
+        unsupported = render_folded_tray(spec, output_path)
+    elif template == "adjacent_rectangles":
+        unsupported = render_adjacent_rectangles(spec, output_path)
+    elif template == "moving_points_rectangle_triangle":
+        unsupported = render_moving_points_rectangle_triangle(spec, output_path)
+    elif template == "right_isosceles_triangle_inner_rectangle":
+        unsupported = render_right_isosceles_triangle_inner(spec, output_path)
+    elif template == "right_isosceles_triangle_parallelogram":
+        unsupported = render_right_isosceles_triangle_inner(spec, output_path, parallelogram=True)
+    elif template == "tiled_rectangle_corner_square":
+        unsupported = render_tiled_rectangle_corner_square(spec, output_path)
     elif template in (
         "parabola_basic_shape",
         "parabola_xintercepts_vertex_triangle",
