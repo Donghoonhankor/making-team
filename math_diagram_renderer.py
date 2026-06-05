@@ -572,6 +572,13 @@ def render_parabola_calculated_template(spec, output_path, mode):
                 [point["y"] for point in polygon + [polygon[0]]],
                 color="#8c5a4a", lw=lw(1.0), zorder=4)
 
+    if mode == "parabola_basic_shape" and any(point.get("label") == "V" for point in points):
+        vx, vy = vertex
+        if y_range[0] <= 0 <= y_range[1] and x_range[0] <= vx <= x_range[1] and abs(vy) > 1e-9:
+            ax.plot([vx, vx], [0, vy], color="#777777", lw=lw(0.9), ls="--", zorder=2.5)
+        if x_range[0] <= 0 <= x_range[1] and y_range[0] <= vy <= y_range[1] and abs(vx) > 1e-9:
+            ax.plot([0, vx], [vy, vy], color="#777777", lw=lw(0.9), ls="--", zorder=2.5)
+
     plot_labeled_points(ax, points)
     x_label_side, y_label_side = axis_label_sides_for_polygon(polygon)
     if mode in (
