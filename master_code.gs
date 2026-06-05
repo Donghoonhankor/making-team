@@ -1233,8 +1233,16 @@ function isStructuredImageSpec_(spec, language) {
     'type': true,
     'template': true,
     'equation': true,
+    'equations': true,
+    'equation1': true,
+    'equation2': true,
+    'equation_left': true,
+    'equation_right': true,
     'equation_top': true,
     'equation_bottom': true,
+    'horizontal_y': true,
+    'vertical_x': true,
+    'curve_labels': true,
     'x_left': true,
     'x_right': true,
     'x_range': true,
@@ -1280,7 +1288,7 @@ function hasUnresolvedImageSpecValue_(key, line) {
   const value = String(line || '').split('=').slice(1).join('=').trim();
   if (/문제\s*본문|제시된\s*점|주어진\s*점|given\s*points?|given\s*graph|as\s*shown/i.test(value)) return true;
   if (key === 'labels' && hasFormulaLikeLabel_(value)) return true;
-  if (key === '식' || key === 'equation' || key === 'equation_top' || key === 'equation_bottom' || key === 'labels') {
+  if (key === '식' || key === 'equation' || key === 'equations' || key === 'equation1' || key === 'equation2' || key === 'equation_left' || key === 'equation_right' || key === 'equation_top' || key === 'equation_bottom' || key === 'labels') {
     return hasUnresolvedEquationLetters_(value);
   }
   return false;
@@ -1352,11 +1360,15 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- parabola_xintercepts_vertex_triangle은 equation만 쓰면 렌더러가 두 x축 교점 A,B와 꼭짓점 C를 계산하고 삼각형 ABC를 색칠한다.',
     '- parabola_xintercepts_yintercept_triangle은 equation만 쓰면 렌더러가 두 x축 교점 A,B와 y축 교점 C를 계산하고 삼각형 ABC를 색칠한다.',
     '- parabola_yintercept_vertex_xintercept_triangle은 equation과 x_intercept=positive 또는 negative를 쓰면 렌더러가 y축 교점 A, 꼭짓점 B, 선택한 x축 교점 C를 계산하고 삼각형 ABC를 색칠한다.',
+    '- 원점을 지나는 두 이차함수와 직선 y=k가 만나는 그림은 template=two_origin_parabolas_horizontal_line을 사용하라. 필수 항목은 equation1, equation2, horizontal_y이다.',
+    '- 원점을 지나는 두 이차함수와 직선 x=a가 만나는 그림은 template=two_origin_parabolas_vertical_line_ratio를 사용하라. 필수 항목은 equation1, equation2, vertical_x이다.',
+    '- 두 이차함수 사이에 둘러싸인 렌즈형/잎사귀형 색칠 영역은 template=two_parabolas_between_area를 사용하라. 필수 항목은 equation1, equation2이다.',
+    '- 원점을 지나는 여러 이차함수 그래프를 비교하는 보기형 그림은 template=parabola_family_origin을 사용하라. 필수 항목은 equations이고, 필요하면 curve_labels=a,b,c처럼 쓴다.',
     '- 이차함수 전용 템플릿에서는 points, labels, region을 쓰지 말라. 점 좌표와 색칠 영역은 렌더러가 equation에서 계산한다.',
     '- 넓이 문제처럼 색칠 영역이 필요하면 region 값에 실제 경계를 적어라. 예: region=between y=x^2 and y=(x-4)^2 for 1<=y<=9 또는 region=between y=2x^2 and y=2x^2+5 for -2<=x<=1.',
     '- 색칠이 필요 없는 그림이면 region을 쓰지 말라. region 없이 이미지생성기/렌더러가 임의로 영역을 색칠한다고 기대하지 말라.',
     '- 한글 그래프 명세는 종류=좌표평면, 식=, x범위=, y범위=, 점=, 교점=, 꼭짓점=, 축=, 영역=, 표시= 항목만 사용하라.',
-    '- 영어 그래프 명세는 type=coordinate_plane, equation=, x_range=, y_range=, points=, intersections=, vertex=, axis=, region=, labels= 또는 template=parabola_band_area, equation_top=, equation_bottom=, x_left=, x_right= 또는 template=parabola_basic_shape/parabola_xintercepts_vertex_triangle/parabola_xintercepts_yintercept_triangle/parabola_yintercept_vertex_xintercept_triangle, equation=, x_intercept=, show_vertex=, show_x_intercepts=, show_y_intercept= 항목만 사용하라.',
+    '- 영어 그래프 명세는 type=coordinate_plane, equation=, x_range=, y_range=, points=, intersections=, vertex=, axis=, region=, labels= 또는 template=parabola_band_area, equation_top=, equation_bottom=, x_left=, x_right= 또는 이차함수 전용 template, equation=, equations=, equation1=, equation2=, equation_left=, equation_right=, horizontal_y=, vertical_x=, curve_labels=, x_intercept=, show_vertex=, show_x_intercepts=, show_y_intercept= 항목만 사용하라.',
     '- 한글 도형 명세는 종류=도형, 도형=, 점=, 좌표=, 변=, 각=, 직각=, 평행=, 수직=, 원=, 중심=, 반지름=, 표시= 항목만 사용하라.',
     '- 영어 도형 명세는 type=geometry, shape=, points=, coordinates=, segments=, angles=, right_angle=, parallel=, perpendicular=, circle=, center=, radius=, labels= 항목만 사용하라.',
     '- 이미지 명세에는 "문제 본문 참고", "주어진 그래프", "위 그림", "아래로 볼록한 포물선", "색칠하여 표시", "그림과 같이", "roughly", "as shown", "shaded" 같은 모호한 문장을 쓰지 말고 실제 식, 좌표, 범위, 점 이름, 선분, 각도, 길이를 명시하라.',
@@ -1365,6 +1377,10 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 예: [이미지 필요9:\\n종류=좌표평면\\n식=y = x² - 16\\n표시=x축 교점 A,B, 꼭짓점 C, 삼각형 ABC] [IMAGE_PROMPT9:\\ntemplate=parabola_xintercepts_vertex_triangle\\nequation=y = x^2 - 16]',
     '- 예: [이미지 필요10:\\n종류=좌표평면\\n식=y = -x² + 4x + 5\\n표시=x축 교점 A,B, y축 교점 C, 삼각형 ABC] [IMAGE_PROMPT10:\\ntemplate=parabola_xintercepts_yintercept_triangle\\nequation=y = -x^2 + 4*x + 5]',
     '- 예: [이미지 필요11:\\n종류=좌표평면\\n식=y = 1/2*x² - 2x - 6\\n표시=y축 교점 A, 꼭짓점 B, x축 양의 교점 C, 삼각형 ABC] [IMAGE_PROMPT11:\\ntemplate=parabola_yintercept_vertex_xintercept_triangle\\nequation=y = 1/2*x^2 - 2*x - 6\\nx_intercept=positive]',
+    '- 예: [이미지 필요13:\\n종류=좌표평면\\n식=y = x², y = 1/4*x², y = 4\\n표시=P, Q, R] [IMAGE_PROMPT13:\\ntemplate=two_origin_parabolas_horizontal_line\\nequation1=y = x^2\\nequation2=y = 1/4*x^2\\nhorizontal_y=4]',
+    '- 예: [이미지 필요14:\\n종류=좌표평면\\n식=y = 1/3*x², y = 2*x², x = 1\\n표시=A, B, C] [IMAGE_PROMPT14:\\ntemplate=two_origin_parabolas_vertical_line_ratio\\nequation1=y = 1/3*x^2\\nequation2=y = 2*x^2\\nvertical_x=1]',
+    '- 예: [이미지 필요15:\\n종류=좌표평면\\n식=y = x², y = -x² + 4\\n영역=두 그래프 사이] [IMAGE_PROMPT15:\\ntemplate=two_parabolas_between_area\\nequation1=y = x^2\\nequation2=y = -x^2 + 4]',
+    '- 예: [이미지 필요16:\\n종류=좌표평면\\n식=y = 2/5*x², y = x², y = -x²\\n표시=a,b,c] [IMAGE_PROMPT16:\\ntemplate=parabola_family_origin\\nequations=y = 2/5*x^2, y = x^2, y = -x^2\\ncurve_labels=a,b,c]',
     '- 예: [이미지 필요12:\\n종류=도형\\n도형=직각삼각형\\n점=A,B,C\\n좌표=A(0,0), B(4,0), C(4,3)\\n직각=B\\n변=AB=4, BC=3, AC=5] [IMAGE_PROMPT12:\\ntype=geometry\\nshape=right_triangle\\npoints=A,B,C\\ncoordinates=A(0,0), B(4,0), C(4,3)\\nright_angle=B\\nsegments=AB=4, BC=3, AC=5\\nlabels=A, B, C]',
     '- 원문 시험 문제를 그대로 복제하지 말고, 선정된 약점유형과 틀린 문항만 참고한다.',
     '- 쌍둥이_규칙의 생성규칙과 금지사항을 반드시 지킨다.',

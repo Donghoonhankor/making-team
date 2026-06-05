@@ -345,6 +345,30 @@ def quadratic_x_intercepts(coeffs):
     return sorted([(-b - root) / (2 * a), (-b + root) / (2 * a)])
 
 
+def quadratic_roots_from_coeffs(a, b, c):
+    if abs(a) < 1e-9:
+        if abs(b) < 1e-9:
+            return []
+        return [-c / b]
+    discriminant = b * b - 4 * a * c
+    if discriminant < -1e-9:
+        return []
+    if abs(discriminant) < 1e-9:
+        return [-b / (2 * a)]
+    root = math.sqrt(discriminant)
+    return sorted([(-b - root) / (2 * a), (-b + root) / (2 * a)])
+
+
+def positive_roots_for_y_level(equation, y_value):
+    a, b, c = quadratic_coefficients(equation)
+    roots = quadratic_roots_from_coeffs(a, b, c - y_value)
+    return sorted(root for root in roots if root >= -1e-9)
+
+
+def equation_value(equation, x_value):
+    return float(safe_eval(equation["expr"], float(x_value)))
+
+
 def point_item(label, x, y):
     return {"label": label, "x": float(x), "y": float(y)}
 
@@ -480,6 +504,149 @@ def render_parabola_calculated_template(spec, output_path, mode):
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return warnings
+
+
+def render_two_origin_parabolas_horizontal_line(spec, output_path):
+    eq1 = parse_y_equation(spec.get("equation1") or spec.get("equation_left") or "")
+    eq2 = parse_y_equation(spec.get("equation2") or spec.get("equation_right") or "")
+    horizontal_y = parse_number(spec.get("horizontal_y"), 4)
+    warnings = []
+
+    roots = []
+    for equation in (eq1, eq2):
+        candidates = positive_roots_for_y_level(equation, horizontal_y)
+        if candidates:
+            roots.append(max(candidates))
+    roots = sorted(roots)
+    if len(roots) < 2:
+        warnings.append("horizontal-line template needs two positive intersections")
+
+    points = [point_item("P", 0, horizontal_y)]
+    if roots:
+        points.append(point_item("Q", roots[0], horizontal_y))
+    if len(roots) > 1:
+        points.append(point_item("R", roots[-1], horizontal_y))
+
+    x_hi = max([1.0] + roots) * 1.25
+    x_range = (-0.4 * x_hi, x_hi)
+    y_values = y_values_for_equations([eq1, eq2], x_range) + [0, horizontal_y]
+    y_range = pad_range(min(y_values), max(y_values), 0.16)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    x = np.linspace(x_range[0], x_range[1], 1200)
+    for equation in (eq1, eq2):
+        ax.plot(x, safe_eval(equation["expr"], x), lw=lw(2), zorder=3)
+    ax.axhline(horizontal_y, color="#777777", lw=lw(1.2), zorder=2)
+    annotate_axis_value(ax, x_range, y_range, "y", horizontal_y, "left_above")
+    plot_labeled_points(ax, points)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return warnings
+
+
+def render_two_origin_parabolas_vertical_line_ratio(spec, output_path):
+    eq1 = parse_y_equation(spec.get("equation1") or "")
+    eq2 = parse_y_equation(spec.get("equation2") or "")
+    vertical_x = parse_number(spec.get("vertical_x"), 1)
+    y1 = equation_value(eq1, vertical_x)
+    y2 = equation_value(eq2, vertical_x)
+    ordered = sorted([y1, y2])
+    points = [
+        point_item("A", vertical_x, 0),
+        point_item("B", vertical_x, ordered[0]),
+        point_item("C", vertical_x, ordered[-1]),
+    ]
+
+    x_range = pad_range(0, max(vertical_x * 1.6, 1.5), 0.15)
+    y_values = y_values_for_equations([eq1, eq2], x_range) + [0, y1, y2]
+    y_range = pad_range(min(y_values), max(y_values), 0.16)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    x = np.linspace(x_range[0], x_range[1], 1200)
+    for equation in (eq1, eq2):
+        ax.plot(x, safe_eval(equation["expr"], x), lw=lw(2), zorder=3)
+    ax.axvline(vertical_x, color="#777777", lw=lw(1.2), zorder=2)
+    annotate_axis_value(ax, x_range, y_range, "x", vertical_x, "below")
+    for point in points:
+        ax.scatter([point["x"]], [point["y"]], color="black", s=marker_area(28), zorder=6)
+    ax.annotate("A", (vertical_x, 0), xytext=(6, -10), textcoords="offset points",
+                ha="left", va="top", fontsize=fs(10), zorder=7)
+    ax.annotate("B", (vertical_x, ordered[0]), xytext=(6, 4), textcoords="offset points",
+                ha="left", va="bottom", fontsize=fs(10), zorder=7)
+    ax.annotate("C", (vertical_x, ordered[-1]), xytext=(6, 4), textcoords="offset points",
+                ha="left", va="bottom", fontsize=fs(10), zorder=7)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_two_parabolas_between_area(spec, output_path):
+    eq1 = parse_y_equation(spec.get("equation1") or spec.get("equation_left") or "")
+    eq2 = parse_y_equation(spec.get("equation2") or spec.get("equation_right") or "")
+    a1, b1, c1 = quadratic_coefficients(eq1)
+    a2, b2, c2 = quadratic_coefficients(eq2)
+    roots = quadratic_roots_from_coeffs(a1 - a2, b1 - b2, c1 - c2)
+    warnings = []
+    if len(roots) < 2:
+        warnings.append("between-area template needs two intersections")
+        roots = roots or [-2, 2]
+        if len(roots) == 1:
+            roots = [roots[0] - 1, roots[0] + 1]
+    left, right = roots[0], roots[-1]
+    x_range = pad_range(left, right, 0.35)
+    y_values = y_values_for_equations([eq1, eq2], x_range) + [0]
+    y_range = pad_range(min(y_values), max(y_values), 0.18)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    x = np.linspace(x_range[0], x_range[1], 1200)
+    y1 = safe_eval(eq1["expr"], x)
+    y2 = safe_eval(eq2["expr"], x)
+    ax.plot(x, y1, lw=lw(2), zorder=3)
+    ax.plot(x, y2, lw=lw(2), zorder=3)
+    x_fill = np.linspace(left, right, 500)
+    ax.fill_between(x_fill, safe_eval(eq1["expr"], x_fill), safe_eval(eq2["expr"], x_fill),
+                    color="#f4c7b8", alpha=0.55, zorder=2)
+    points = [
+        point_item("A", left, equation_value(eq1, left)),
+        point_item("B", right, equation_value(eq1, right)),
+    ]
+    plot_labeled_points(ax, points)
+    for value in roots[:2]:
+        annotate_axis_value(ax, x_range, y_range, "x", value, "below")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return warnings
+
+
+def render_parabola_family_origin(spec, output_path):
+    equations = [item for item in parse_equations(spec.get("equations") or spec.get("equation", "")) if item.get("kind") == "y"]
+    labels = parse_labels(spec.get("curve_labels") or spec.get("labels", ""))
+    if not equations:
+        equations = [parse_y_equation("y=x^2")]
+    x_range = parse_range(spec.get("x_range"), (-3, 3))
+    y_values = y_values_for_equations(equations, x_range) + [0]
+    y_range = pad_range(min(y_values), max(y_values), 0.12)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    x = np.linspace(x_range[0], x_range[1], 1200)
+    label_x = x_range[1] * 0.72
+    for index, equation in enumerate(equations):
+        y = safe_eval(equation["expr"], x)
+        ax.plot(x, y, lw=lw(1.7), zorder=3)
+        label = labels[index] if index < len(labels) else chr(ord("a") + index)
+        try:
+            label_y = equation_value(equation, label_x)
+            if y_range[0] <= label_y <= y_range[1]:
+                ax.text(label_x, label_y, label, fontsize=fs(10), ha="left", va="center")
+        except Exception:
+            pass
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
 
 
 def shade_enclosed_region(ax, equations):
@@ -704,6 +871,14 @@ def render_block(index, block, input_path, output_dir):
     output_path = build_output_path(input_path, output_dir, index)
     if template == "parabola_band_area":
         unsupported = render_parabola_band_area(spec, output_path)
+    elif template == "two_origin_parabolas_horizontal_line":
+        unsupported = render_two_origin_parabolas_horizontal_line(spec, output_path)
+    elif template == "two_origin_parabolas_vertical_line_ratio":
+        unsupported = render_two_origin_parabolas_vertical_line_ratio(spec, output_path)
+    elif template == "two_parabolas_between_area":
+        unsupported = render_two_parabolas_between_area(spec, output_path)
+    elif template == "parabola_family_origin":
+        unsupported = render_parabola_family_origin(spec, output_path)
     elif template in (
         "parabola_basic_shape",
         "parabola_xintercepts_vertex_triangle",

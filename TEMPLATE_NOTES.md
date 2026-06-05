@@ -15,6 +15,10 @@ Implemented in `math_diagram_renderer.py`:
 - `parabola_x_intercepts_y_intercept_triangle` alias
 - `parabola_yintercept_vertex_xintercept_triangle`
 - `parabola_y_intercept_vertex_x_intercept_triangle` alias
+- `two_origin_parabolas_horizontal_line`
+- `two_origin_parabolas_vertical_line_ratio`
+- `two_parabolas_between_area`
+- `parabola_family_origin`
 
 Implemented behavior:
 
@@ -712,4 +716,3 @@ Geometry templates:
 7. `folded_tray`
 8. `right_isosceles_triangle_inner_rectangle`
 9. `moving_points_rectangle_triangle`
-
