@@ -368,6 +368,25 @@ def pad_range(lo, hi, ratio=0.15, minimum=1.0):
     return lo - pad, hi + pad
 
 
+def steepen_parabola_view(x_range, y_range, strength=0.72):
+    x_span = max(float(x_range[1] - x_range[0]), 1.0)
+    y_span = max(float(y_range[1] - y_range[0]), 1.0)
+    target_span = max(3.0, x_span * strength)
+    # Never crop aggressively: workbook-style graphs should look more upright,
+    # but all key intercepts/vertices still need to remain visible.
+    if y_span <= target_span or target_span < y_span * 0.92:
+        return y_range
+    center = (y_range[0] + y_range[1]) / 2
+    return center - target_span / 2, center + target_span / 2
+
+
+def widen_x_for_parabola_style(x_range, amount=0.18):
+    xmin, xmax = x_range
+    span = max(xmax - xmin, 1.0)
+    pad = span * amount
+    return xmin - pad, xmax + pad
+
+
 def y_values_for_equations(equations, x_range):
     x = np.linspace(x_range[0], x_range[1], 600)
     values = []
@@ -529,11 +548,13 @@ def render_parabola_calculated_template(spec, output_path, mode):
         x_range = pad_range(min(xs_for_range), max(xs_for_range), 0.25)
     else:
         x_range = pad_range(vertex[0] - 3, vertex[0] + 3, 0.05)
+    x_range = widen_x_for_parabola_style(x_range, 0.12)
 
     y_candidates = y_values_for_equations([equation], x_range)
     y_candidates.extend([0, y_intercept[1], vertex[1]])
     y_candidates.extend(point["y"] for point in points)
     y_range = pad_range(min(y_candidates), max(y_candidates), 0.18)
+    y_range = steepen_parabola_view(x_range, y_range, 0.72)
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
     setup_axes(ax, x_range, y_range)
@@ -600,8 +621,10 @@ def render_two_origin_parabolas_horizontal_line(spec, output_path):
 
     x_hi = max([1.0] + roots) * 1.25
     x_range = (-0.4 * x_hi, x_hi)
+    x_range = widen_x_for_parabola_style(x_range, 0.10)
     y_values = y_values_for_equations([eq1, eq2], x_range) + [0, horizontal_y]
     y_range = pad_range(min(y_values), max(y_values), 0.16)
+    y_range = steepen_parabola_view(x_range, y_range, 0.82)
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
     setup_axes(ax, x_range, y_range)
@@ -630,8 +653,10 @@ def render_two_origin_parabolas_vertical_line_ratio(spec, output_path):
     ]
 
     x_range = pad_range(0, max(vertical_x * 1.6, 1.5), 0.15)
+    x_range = widen_x_for_parabola_style(x_range, 0.10)
     y_values = y_values_for_equations([eq1, eq2], x_range) + [0, y1, y2]
     y_range = pad_range(min(y_values), max(y_values), 0.16)
+    y_range = steepen_parabola_view(x_range, y_range, 0.82)
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
     setup_axes(ax, x_range, y_range)
@@ -667,8 +692,10 @@ def render_two_parabolas_between_area(spec, output_path):
             roots = [roots[0] - 1, roots[0] + 1]
     left, right = roots[0], roots[-1]
     x_range = pad_range(left, right, 0.35)
+    x_range = widen_x_for_parabola_style(x_range, 0.10)
     y_values = y_values_for_equations([eq1, eq2], x_range) + [0]
     y_range = pad_range(min(y_values), max(y_values), 0.18)
+    y_range = steepen_parabola_view(x_range, y_range, 0.78)
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
     setup_axes(ax, x_range, y_range)
@@ -698,8 +725,10 @@ def render_parabola_family_origin(spec, output_path):
     if not equations:
         equations = [parse_y_equation("y=x^2")]
     x_range = parse_range(spec.get("x_range"), (-3, 3))
+    x_range = widen_x_for_parabola_style(x_range, 0.10)
     y_values = y_values_for_equations(equations, x_range) + [0]
     y_range = pad_range(min(y_values), max(y_values), 0.12)
+    y_range = steepen_parabola_view(x_range, y_range, 0.78)
 
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
     setup_axes(ax, x_range, y_range)
@@ -761,7 +790,9 @@ def common_quadratic_choice_range(equations):
             pass
 
     x_range = pad_range(min(x_candidates), max(x_candidates), 0.16, 2.0)
+    x_range = widen_x_for_parabola_style(x_range, 0.08)
     y_range = pad_range(min(y_candidates), max(y_candidates), 0.16, 2.0)
+    y_range = steepen_parabola_view(x_range, y_range, 0.70)
     if y_range[1] - y_range[0] < 4:
         center = (y_range[0] + y_range[1]) / 2
         y_range = (center - 2, center + 2)
@@ -891,6 +922,9 @@ def auto_focus_ranges(spec, equations, points, x_range, y_range):
             current_span = max(y_range[1] - y_range[0], 1.0)
             if current_span > focused_span * 1.4 or focused_span > current_span * 1.15:
                 y_range = focused_y_range
+        if any(equation.get("kind") == "y" and "x**2" in equation.get("expr", "") for equation in y_equations):
+            x_range = widen_x_for_parabola_style(x_range, 0.08)
+            y_range = steepen_parabola_view(x_range, y_range, 0.74)
 
     return x_range, y_range
 
