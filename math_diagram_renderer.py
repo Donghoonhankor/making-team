@@ -807,6 +807,33 @@ def render_multiple_choice_parabola_position(spec, output_path):
     return warnings
 
 
+def should_auto_use_xintercepts_vertex_triangle(spec):
+    if spec.get("template"):
+        return False
+    if str(spec.get("type", "coordinate_plane")).strip() not in ("", "coordinate_plane"):
+        return False
+    if spec.get("points"):
+        return False
+    labels = set(parse_labels(spec.get("labels", "")))
+    region_text = str(spec.get("region", "")).lower()
+    marker_text = " ".join([
+        str(spec.get("labels", "")),
+        str(spec.get("region", "")),
+        str(spec.get("intersections", "")),
+        str(spec.get("vertex", "")),
+    ]).lower()
+    if not ({"A", "B", "C"}.issubset(labels) or "triangle" in region_text or "abc" in marker_text):
+        return False
+    equations = [equation for equation in parse_equations(spec.get("equation", "")) if equation.get("kind") == "y"]
+    if len(equations) != 1:
+        return False
+    try:
+        roots = quadratic_x_intercepts(quadratic_coefficients(equations[0]))
+        return len(roots) >= 2
+    except Exception:
+        return False
+
+
 def shade_enclosed_region(ax, equations):
     y_equations = [equation for equation in equations if equation.get("kind") == "y"]
     verticals = sorted(equation["value"] for equation in equations if equation.get("kind") == "x")
@@ -1193,6 +1220,8 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_parabola_calculated_template(spec, output_path, normalized_template)
     elif kind == "geometry":
         unsupported = render_geometry(spec, output_path)
+    elif should_auto_use_xintercepts_vertex_triangle(spec):
+        unsupported = render_parabola_calculated_template(spec, output_path, "parabola_xintercepts_vertex_triangle")
     else:
         unsupported = render_coordinate_plane(spec, output_path)
     return output_path, unsupported, spec

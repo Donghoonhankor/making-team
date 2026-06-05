@@ -1374,6 +1374,7 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- template=parabola_band_area 필수 영어 항목은 template, equation_top, equation_bottom, x_left, x_right뿐이다. equation_top/equation_bottom에는 실제 y=... 식을 쓰고, x_left/x_right에는 숫자만 쓴다.',
     '- template=parabola_band_area에서는 type, equation, x_range, y_range, region, labels를 쓰지 말라. 렌더러가 자동으로 축 범위, 색칠, x값 라벨을 처리한다.',
     '- 이차함수의 x축 교점, y축 교점, 꼭짓점, 삼각형 넓이 그림은 반드시 전용 템플릿을 사용하라. 허용 템플릿: parabola_basic_shape, parabola_xintercepts_vertex_triangle, parabola_xintercepts_yintercept_triangle, parabola_yintercept_vertex_xintercept_triangle.',
+    '- "x축과 만나는 두 점을 A, B라 하고 꼭짓점을 C라고 할 때 삼각형 ABC의 넓이" 유형은 반드시 template=parabola_xintercepts_vertex_triangle을 사용하라. type=coordinate_plane, labels=A,B,C, points 없음 형태로 쓰면 실패로 간주된다.',
     '- parabola_basic_shape는 equation만 쓰면 렌더러가 꼭짓점, x축 교점, y축 교점을 자동 계산해 표시한다. 필요하면 show_vertex=false, show_x_intercepts=false, show_y_intercept=false를 쓸 수 있다.',
     '- parabola_xintercepts_vertex_triangle은 equation만 쓰면 렌더러가 두 x축 교점 A,B와 꼭짓점 C를 계산하고 삼각형 ABC를 색칠한다.',
     '- parabola_xintercepts_yintercept_triangle은 equation만 쓰면 렌더러가 두 x축 교점 A,B와 y축 교점 C를 계산하고 삼각형 ABC를 색칠한다.',
