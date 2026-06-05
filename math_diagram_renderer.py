@@ -261,7 +261,8 @@ def setup_axes(ax, x_range, y_range):
 
 
 def setup_choice_axes(ax, x_range, y_range):
-    ax.set_xlim(*x_range)
+    x_pad = (x_range[1] - x_range[0]) * 0.06
+    ax.set_xlim(x_range[0], x_range[1] + x_pad)
     ax.set_ylim(*y_range)
     for spine in ax.spines.values():
         spine.set_visible(False)
@@ -269,7 +270,7 @@ def setup_choice_axes(ax, x_range, y_range):
     ax.set_yticks([])
     ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
 
-    xmin, xmax = x_range
+    xmin, xmax = ax.get_xlim()
     ymin, ymax = y_range
     axis_arrow = dict(
         arrowstyle="-|>",
@@ -338,9 +339,9 @@ def annotate_horizontal_line_label(ax, x_range, y_range, y_value):
     ymin, ymax = y_range
     if not (ymin <= y_value <= ymax):
         return
-    x_pos = xmin + (xmax - xmin) * 0.78
-    ax.annotate("y = " + text, (x_pos, y_value), xytext=(4, 4),
-                textcoords="offset points", ha="left", va="bottom",
+    x_pos = xmin + (xmax - xmin) * 0.90
+    ax.annotate("y = " + text, (x_pos, y_value), xytext=(-4, 7),
+                textcoords="offset points", ha="right", va="bottom",
                 fontsize=fs(9), color="dimgray", zorder=8,
                 bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
 
