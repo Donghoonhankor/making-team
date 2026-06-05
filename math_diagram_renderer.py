@@ -1202,6 +1202,310 @@ def render_line_to_parabola_quadrant_match(spec, output_path):
     return []
 
 
+def quadratic_line_intersections(equation, line):
+    qa, qb, qc = quadratic_coefficients(equation)
+    if abs(line["b"]) < 1e-9:
+        x = line_x_at_y(line, 0)
+        if x is None:
+            return []
+        return [(x, equation_value(equation, x))]
+    slope = -line["a"] / line["b"]
+    intercept = -line["c"] / line["b"]
+    roots = quadratic_roots_from_coeffs(qa, qb - slope, qc - intercept)
+    return [(x, slope * x + intercept) for x in roots]
+
+
+def draw_guides_to_axes(ax, points, x_to_axis=True, y_to_axis=False):
+    for point in points:
+        x, y = point["x"], point["y"]
+        if x_to_axis and abs(y) > 1e-9:
+            ax.plot([x, x], [0, y], color="#777777", lw=lw(0.8), ls="--", zorder=2.5)
+        if y_to_axis and abs(x) > 1e-9:
+            ax.plot([0, x], [y, y], color="#777777", lw=lw(0.8), ls="--", zorder=2.5)
+
+
+def render_parabola_vertex_yintercept_origin_triangle(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=-x^2+4*x+5")
+    coeffs = quadratic_coefficients(equation)
+    vertex = quadratic_vertex(coeffs)
+    y_intercept = coeffs[2]
+    points = [
+        point_item("A", vertex[0], vertex[1]),
+        point_item("B", 0, y_intercept),
+        point_item("O", 0, 0),
+    ]
+
+    def extra(ax, x_range, y_range):
+        draw_guides_to_axes(ax, [points[0]], x_to_axis=True, y_to_axis=True)
+
+    return render_quadratic_scene(output_path, [equation], points=points, polygons=[points], extra_draw=extra,
+                                  x_candidates=[vertex[0], 0], y_candidates=[vertex[1], y_intercept, 0])
+
+
+def render_parabola_xintercepts_vertex_yintercept_quadrilateral(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=-x^2+2*x+3")
+    coeffs = quadratic_coefficients(equation)
+    roots = quadratic_x_intercepts(coeffs)
+    vertex = quadratic_vertex(coeffs)
+    warnings = []
+    if len(roots) < 2:
+        warnings.append("quadrilateral template needs two x-intercepts")
+        roots = roots or [-1, 1]
+        if len(roots) == 1:
+            roots = [roots[0] - 1, roots[0] + 1]
+    y_intercept = coeffs[2]
+    points = [
+        point_item("A", roots[0], 0),
+        point_item("B", roots[-1], 0),
+        point_item("C", vertex[0], vertex[1]),
+        point_item("D", 0, y_intercept),
+    ]
+    polygon = [points[0], points[2], points[1], points[3]]
+    return warnings + render_quadratic_scene(output_path, [equation], points=points, polygons=[polygon],
+                                             x_candidates=roots + [vertex[0], 0],
+                                             y_candidates=[0, vertex[1], y_intercept])
+
+
+def render_parabola_yaxis_xpositive_parallelogram(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=-x^2+4*x+5")
+    coeffs = quadratic_coefficients(equation)
+    roots = [root for root in quadratic_x_intercepts(coeffs) if root >= -1e-9]
+    right_root = max(roots) if roots else 3
+    y_intercept = coeffs[2]
+    vertex = quadratic_vertex(coeffs)
+    points = [
+        point_item("O", 0, 0),
+        point_item("A", 0, y_intercept),
+        point_item("B", vertex[0], vertex[1]),
+        point_item("C", right_root, 0),
+    ]
+    return render_quadratic_scene(output_path, [equation], points=points, polygons=[points],
+                                  x_candidates=[0, vertex[0], right_root], y_candidates=[0, y_intercept, vertex[1]])
+
+
+def render_parabola_point_xaxis_triangle(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=1/2*x^2")
+    point_x = parse_number(spec.get("point_x"), 3)
+    base_x = parse_number(spec.get("base_x"), 4)
+    point_y = equation_value(equation, point_x)
+    points = [
+        point_item("O", 0, 0),
+        point_item("A", base_x, 0),
+        point_item("P", point_x, point_y),
+    ]
+
+    def extra(ax, x_range, y_range):
+        draw_guides_to_axes(ax, [points[2]], x_to_axis=True, y_to_axis=False)
+        if abs(base_x) > 1e-9:
+            annotate_axis_value(ax, x_range, y_range, "x", base_x, "below")
+
+    return render_quadratic_scene(output_path, [equation], points=points, polygons=[points], extra_draw=extra,
+                                  x_candidates=[0, base_x, point_x], y_candidates=[0, point_y])
+
+
+def render_parabola_line_intersections_triangle(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=1/2*(x-2)^2")
+    line = parse_line_equation(spec.get("line_equation") or "y=x-1")
+    intersections = quadratic_line_intersections(equation, line)
+    warnings = []
+    if len(intersections) < 2:
+        warnings.append("line-intersection template needs two intersections")
+        intersections = intersections or [(1, equation_value(equation, 1)), (3, equation_value(equation, 3))]
+    intersections = sorted(intersections, key=lambda item: item[0])
+    a = point_item("A", intersections[0][0], intersections[0][1])
+    b = point_item("B", intersections[-1][0], intersections[-1][1])
+    c = point_item("C", a["x"], 0)
+    d = point_item("D", b["x"], 0)
+    points = [a, b, c, d]
+
+    def extra(ax, x_range, y_range):
+        xs = np.linspace(x_range[0], x_range[1], 500)
+        ys = [line_y(line, x) for x in xs]
+        ax.plot(xs, ys, color="#555555", lw=lw(1.4), zorder=3)
+        draw_guides_to_axes(ax, [a, b], x_to_axis=True, y_to_axis=False)
+
+    return warnings + render_quadratic_scene(output_path, [equation], points=points, polygons=[[a, b, d, c]],
+                                             extra_draw=extra,
+                                             x_candidates=[a["x"], b["x"], c["x"], d["x"], 0],
+                                             y_candidates=[a["y"], b["y"], 0])
+
+
+def render_two_parabolas_lens_rectangle(spec, output_path):
+    eq_top = parse_y_equation(spec.get("equation_top") or spec.get("equation1") or "y=-1/2*x^2+4")
+    eq_bottom = parse_y_equation(spec.get("equation_bottom") or spec.get("equation2") or "y=x^2-2")
+    coeff_top = quadratic_coefficients(eq_top)
+    coeff_bottom = quadratic_coefficients(eq_bottom)
+    roots = quadratic_roots_from_coeffs(
+        coeff_top[0] - coeff_bottom[0],
+        coeff_top[1] - coeff_bottom[1],
+        coeff_top[2] - coeff_bottom[2],
+    )
+    warnings = []
+    if len(roots) < 2:
+        warnings.append("lens-rectangle template needs two parabola intersections")
+        roots = [-2, 2]
+    left, right = roots[0], roots[-1]
+    mid_y = (equation_value(eq_top, 0) + equation_value(eq_bottom, 0)) / 2
+    top_y = max(equation_value(eq_top, 0), equation_value(eq_bottom, 0))
+    bottom_y = min(equation_value(eq_top, 0), equation_value(eq_bottom, 0))
+    points = [
+        point_item("A", left, mid_y),
+        point_item("B", left, bottom_y),
+        point_item("C", right, bottom_y),
+        point_item("D", right, mid_y),
+    ]
+
+    def extra(ax, x_range, y_range):
+        xs = np.linspace(left, right, 500)
+        ax.fill_between(xs, safe_eval(eq_top["expr"], xs), safe_eval(eq_bottom["expr"], xs),
+                        color="#f4c7b8", alpha=0.45, zorder=2)
+        ax.plot([left, left, right, right, left], [bottom_y, mid_y, mid_y, bottom_y, bottom_y],
+                color="#8c5a4a", lw=lw(1.0), zorder=4)
+
+    return warnings + render_quadratic_scene(output_path, [eq_top, eq_bottom], points=points, extra_draw=extra,
+                                             x_candidates=[left, right, 0], y_candidates=[top_y, bottom_y, mid_y, 0])
+
+
+def render_parabola_four_family_origin(spec, output_path):
+    raw_equations = spec.get("equations") or "y=-x^2; y=-1/3*x^2; y=1/3*x^2; y=2*x^2"
+    parts = split_semicolon_outside_parentheses(raw_equations)
+    if len(parts) <= 1:
+        parts = split_csv_outside_parentheses(raw_equations)
+    equations = []
+    for part in parts:
+        try:
+            equations.append(parse_y_equation(part))
+        except Exception:
+            pass
+    labels = parse_labels(spec.get("curve_labels") or "1,2,3,4")
+    x_range = parse_range(spec.get("x_range"), (-2.8, 2.8))
+    y_values = y_values_for_equations(equations, x_range) + [0]
+    y_range = pad_range(min(y_values), max(y_values), 0.12)
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    xs = np.linspace(x_range[0], x_range[1], 900)
+    for index, equation in enumerate(equations[:6]):
+        ys = safe_eval(equation["expr"], xs)
+        ax.plot(xs, ys, color="black", lw=lw(1.4), zorder=3)
+        label = labels[index] if index < len(labels) else str(index + 1)
+        sample_x = x_range[1] * (0.42 + 0.08 * (index % 3))
+        try:
+            sample_y = equation_value(equation, sample_x)
+            if y_range[0] <= sample_y <= y_range[1]:
+                ax.text(sample_x, sample_y, label, fontsize=fs(8), ha="left", va="center",
+                        bbox=dict(facecolor="white", edgecolor="none", alpha=0.7, pad=fs(0.25)))
+        except Exception:
+            pass
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_parabola_axis_values(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=-(x+2)^2")
+    coeffs = quadratic_coefficients(equation)
+    roots = quadratic_x_intercepts(coeffs)
+    vertex = quadratic_vertex(coeffs)
+    y_intercept = coeffs[2]
+    x_candidates = roots + [vertex[0], 0]
+    x_range = pad_range(min(x_candidates), max(x_candidates), 0.35, 2.0)
+    x_range = widen_x_for_parabola_style(x_range, 0.10)
+    y_values = y_values_for_equations([equation], x_range) + [0, vertex[1], y_intercept]
+    y_range = pad_range(min(y_values), max(y_values), 0.18, 2.0)
+    y_range = steepen_parabola_view(x_range, y_range, 0.76)
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    xs = np.linspace(x_range[0], x_range[1], 1200)
+    ys = safe_eval(equation["expr"], xs)
+    ax.plot(xs, ys, color="black", lw=lw(1.8), zorder=3)
+    if str(spec.get("show_guides", "true")).lower() != "false":
+        vx, vy = vertex
+        if abs(vx) > 1e-9:
+            ax.plot([vx, vx], [0, vy], color="#777777", lw=lw(0.8), ls="--", zorder=2.5)
+        if abs(vy) > 1e-9:
+            ax.plot([0, vx], [vy, vy], color="#777777", lw=lw(0.8), ls="--", zorder=2.5)
+    for root in roots:
+        annotate_axis_value(ax, x_range, y_range, "x", root, "below")
+    if abs(vertex[0]) > 1e-9:
+        annotate_axis_value(ax, x_range, y_range, "x", vertex[0], "below")
+    if abs(vertex[1]) > 1e-9:
+        annotate_axis_value(ax, x_range, y_range, "y", vertex[1], "left")
+    if abs(y_intercept) > 1e-9 and abs(y_intercept - vertex[1]) > 1e-9:
+        annotate_axis_value(ax, x_range, y_range, "y", y_intercept, "left")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_quadratic_motion_height(spec, output_path):
+    equation = parse_y_equation(spec.get("equation") or "y=-2*(x-3)^2+50")
+    coeffs = quadratic_coefficients(equation)
+    vertex = quadratic_vertex(coeffs)
+    start_y = equation_value(equation, 0)
+    roots = [root for root in quadratic_x_intercepts(coeffs) if root >= -1e-9]
+    end_x = max(roots) if roots else vertex[0] * 2
+    points = [point_item("", vertex[0], vertex[1]), point_item("", 0, start_y)]
+
+    def extra(ax, x_range, y_range):
+        draw_guides_to_axes(ax, [point_item("", vertex[0], vertex[1])], x_to_axis=True, y_to_axis=True)
+        annotate_axis_value(ax, x_range, y_range, "x", vertex[0], "below")
+        annotate_axis_value(ax, x_range, y_range, "y", vertex[1], "left")
+        annotate_axis_value(ax, x_range, y_range, "y", start_y, "left")
+
+    return render_quadratic_scene(output_path, [equation], points=points, extra_draw=extra,
+                                  x_candidates=[0, vertex[0], end_x], y_candidates=[0, start_y, vertex[1]])
+
+
+def render_parabolic_water_cross_section(spec, output_path):
+    width = parse_length(spec.get("width"), 20)
+    depth = parse_length(spec.get("depth"), 5)
+    half = width / 2
+    x = np.linspace(-half, half, 600)
+    y = depth * (x / half) ** 2
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, depth + 3)
+    ax.add_patch(plt.Rectangle((0, 0), width, depth + 1.4, facecolor="#d7ad63", edgecolor="none", alpha=0.85))
+    ax.fill_between(x + half, y + 0.8, depth + 0.8, color="#8fd0ef", alpha=0.85)
+    ax.plot(x + half, y + 0.8, color="#555555", lw=lw(1.2))
+    ax.plot([0, width], [depth + 0.8, depth + 0.8], color="#555555", lw=lw(1.0))
+    ax.text(0.2, depth + 0.9, "A", fontsize=fs(9), ha="left", va="bottom")
+    ax.text(width - 0.2, depth + 0.9, "B", fontsize=fs(9), ha="right", va="bottom")
+    ax.text(half, depth + 1.2, "M", fontsize=fs(9), ha="center", va="bottom")
+    draw_dimension(ax, (0, depth + 1.35), (width, depth + 1.35), length_label(spec.get("width"), width, " m"), (0, 0.45))
+    draw_dimension(ax, (half, depth + 0.8), (half, 0.8), length_label(spec.get("depth"), depth, " m"), (width * 0.06, 0))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_stacked_blocks_pattern(spec, output_path):
+    stages = bounded_count(spec.get("stages"), 3, 1, 5)
+    cell = parse_length(spec.get("cell"), 1)
+    fig, ax = plt.subplots(figsize=(2.1, 1.25))
+    ax.axis("off")
+    x0 = 0
+    max_h = (stages + 1) * cell
+    for stage in range(1, stages + 1):
+        cells = []
+        for col in range(stage + 1):
+            height = max(1, stage + 1 - col)
+            for row in range(height):
+                cells.append((x0 + col * cell, row * cell))
+        for x_cell, y_cell in cells:
+            ax.add_patch(plt.Rectangle((x_cell, y_cell + 0.35), cell, cell,
+                                       facecolor="#de8f68", edgecolor="black", lw=lw(0.7)))
+            ax.add_patch(plt.Polygon([(x_cell, y_cell + 1.35), (x_cell + 0.25, y_cell + 1.55),
+                                      (x_cell + 1.25, y_cell + 1.55), (x_cell + cell, y_cell + 1.35)],
+                                     closed=True, facecolor="#f1b18c", edgecolor="black", lw=lw(0.5)))
+        ax.text(x0 + (stage + 1) * cell / 2, 0.05, f"[{stage}]", fontsize=fs(8), ha="center", va="bottom")
+        x0 += (stage + 2.2) * cell
+    ax.set_xlim(-0.2, x0)
+    ax.set_ylim(0, max_h + 0.8)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
 def render_linear_basic_intercepts(spec, output_path):
     lines = parse_line_equations(spec.get("equation") or spec.get("line_equation") or "y=-x+2")
     points = []
@@ -2489,6 +2793,28 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_two_parabolas_shared_vertex_intersections(spec, output_path)
     elif template == "line_to_parabola_quadrant_match":
         unsupported = render_line_to_parabola_quadrant_match(spec, output_path)
+    elif template == "parabola_vertex_yintercept_origin_triangle":
+        unsupported = render_parabola_vertex_yintercept_origin_triangle(spec, output_path)
+    elif template == "parabola_xintercepts_vertex_yintercept_quadrilateral":
+        unsupported = render_parabola_xintercepts_vertex_yintercept_quadrilateral(spec, output_path)
+    elif template == "parabola_yaxis_xpositive_parallelogram":
+        unsupported = render_parabola_yaxis_xpositive_parallelogram(spec, output_path)
+    elif template == "parabola_point_xaxis_triangle":
+        unsupported = render_parabola_point_xaxis_triangle(spec, output_path)
+    elif template == "parabola_line_intersections_triangle":
+        unsupported = render_parabola_line_intersections_triangle(spec, output_path)
+    elif template == "two_parabolas_lens_rectangle":
+        unsupported = render_two_parabolas_lens_rectangle(spec, output_path)
+    elif template == "parabola_four_family_origin":
+        unsupported = render_parabola_four_family_origin(spec, output_path)
+    elif template == "parabola_axis_values":
+        unsupported = render_parabola_axis_values(spec, output_path)
+    elif template == "quadratic_motion_height":
+        unsupported = render_quadratic_motion_height(spec, output_path)
+    elif template == "parabolic_water_cross_section":
+        unsupported = render_parabolic_water_cross_section(spec, output_path)
+    elif template == "stacked_blocks_pattern":
+        unsupported = render_stacked_blocks_pattern(spec, output_path)
     elif template == "linear_basic_intercepts":
         unsupported = render_linear_basic_intercepts(spec, output_path)
     elif template == "linear_point_guides":

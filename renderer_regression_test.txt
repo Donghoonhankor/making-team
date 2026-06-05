@@ -468,3 +468,92 @@ stages=4
 template=rectangular_dot_pattern
 stages=4
 ]
+
+[IMAGE_PROMPT72:
+template=parabola_axis_values
+equation=y = -(x+2)^2
+]
+
+[IMAGE_PROMPT73:
+template=parabola_basic_shape
+equation=y = (x+1)^2 - 3
+show_vertex=true
+show_x_intercepts=true
+show_y_intercept=true
+]
+
+[IMAGE_PROMPT74:
+template=parabola_xintercepts_yintercept_triangle
+equation=y = x^2 + x - 6
+]
+
+[IMAGE_PROMPT75:
+template=parabola_xintercepts_vertex_yintercept_quadrilateral
+equation=y = -x^2 + 2*x + 3
+]
+
+[IMAGE_PROMPT76:
+template=parabola_vertex_yintercept_origin_triangle
+equation=y = -x^2 - 4*x + 5
+]
+
+[IMAGE_PROMPT77:
+template=parabola_four_family_origin
+equations=y = -x^2; y = -1/3*x^2; y = 1/3*x^2; y = 2*x^2
+curve_labels=a,b,c,d
+]
+
+[IMAGE_PROMPT78:
+template=two_parabolas_same_width_horizontal_chord
+equation_left=y = 1/2*(x+1)^2
+equation_right=y = 1/2*(x-3)^2
+chord_y=2
+]
+
+[IMAGE_PROMPT79:
+template=parabola_line_intersections_triangle
+equation=y = 1/2*(x-2)^2
+line_equation=y = x - 1
+]
+
+[IMAGE_PROMPT80:
+template=two_parabolas_lens_rectangle
+equation_top=y = -1/2*x^2 + 2
+equation_bottom=y = x^2 - 2
+]
+
+[IMAGE_PROMPT81:
+template=parabola_yaxis_xpositive_parallelogram
+equation=y = -x^2 + 4*x + 5
+]
+
+[IMAGE_PROMPT82:
+template=parabola_point_xaxis_triangle
+equation=y = 1/2*x^2
+point_x=3
+base_x=4
+]
+
+[IMAGE_PROMPT83:
+template=parabola_band_area
+equation_top=y = 1/2*x^2 + 1
+equation_bottom=y = 1/2*x^2 - 1
+x_left=-1
+x_right=2
+]
+
+[IMAGE_PROMPT84:
+template=quadratic_motion_height
+equation=y = -2*(x-3)^2 + 50
+]
+
+[IMAGE_PROMPT85:
+template=parabolic_water_cross_section
+width=20
+depth=5
+]
+
+[IMAGE_PROMPT86:
+template=stacked_blocks_pattern
+stages=3
+]

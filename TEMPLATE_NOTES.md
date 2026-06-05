@@ -1154,6 +1154,156 @@ template=rectangular_dot_pattern
 stages=4
 ```
 
+### `parabola_vertex_yintercept_origin_triangle`
+
+Purpose:
+
+- Parabola with vertex A, y-intercept B, and origin O forming a shaded triangle.
+
+Fields:
+
+```text
+template=parabola_vertex_yintercept_origin_triangle
+equation=y = -x^2 - 4*x + 5
+```
+
+### `parabola_xintercepts_vertex_yintercept_quadrilateral`
+
+Purpose:
+
+- Parabola with x-intercepts A, B, vertex C, y-intercept D, and a shaded quadrilateral.
+
+Fields:
+
+```text
+template=parabola_xintercepts_vertex_yintercept_quadrilateral
+equation=y = -x^2 + 2*x + 3
+```
+
+### `parabola_yaxis_xpositive_parallelogram`
+
+Purpose:
+
+- Downward parabola with y-intercept, vertex, positive x-intercept, and origin forming OABC.
+
+Fields:
+
+```text
+template=parabola_yaxis_xpositive_parallelogram
+equation=y = -x^2 + 4*x + 5
+```
+
+### `parabola_point_xaxis_triangle`
+
+Purpose:
+
+- Point P on a parabola with O and an x-axis point A forming a shaded triangle.
+
+Fields:
+
+```text
+template=parabola_point_xaxis_triangle
+equation=y = 1/2*x^2
+point_x=3
+base_x=4
+```
+
+### `parabola_line_intersections_triangle`
+
+Purpose:
+
+- Parabola and line with two intersections A, B and vertical feet C, D on the x-axis.
+
+Fields:
+
+```text
+template=parabola_line_intersections_triangle
+equation=y = 1/2*(x-2)^2
+line_equation=y = x - 1
+```
+
+### `two_parabolas_lens_rectangle`
+
+Purpose:
+
+- Two parabolas enclosing a lens region with an inscribed rectangle.
+
+Fields:
+
+```text
+template=two_parabolas_lens_rectangle
+equation_top=y = -1/2*x^2 + 2
+equation_bottom=y = x^2 - 2
+```
+
+### `parabola_four_family_origin`
+
+Purpose:
+
+- Four parabolas sharing the origin, used for coefficient-comparison problems.
+
+Fields:
+
+```text
+template=parabola_four_family_origin
+equations=y = -x^2; y = -1/3*x^2; y = 1/3*x^2; y = 2*x^2
+curve_labels=ㄱ,ㄴ,ㄷ,ㄹ
+```
+
+### `parabola_axis_values`
+
+Purpose:
+
+- Small precise parabola graph with axis values and guide lines, but no point-name labels.
+
+Fields:
+
+```text
+template=parabola_axis_values
+equation=y = -(x+2)^2
+show_guides=true
+```
+
+### `quadratic_motion_height`
+
+Purpose:
+
+- Projectile-height parabola with vertex and starting height guide lines.
+
+Fields:
+
+```text
+template=quadratic_motion_height
+equation=y = -2*(x-3)^2 + 50
+```
+
+### `parabolic_water_cross_section`
+
+Purpose:
+
+- Parabolic cross-section of water in a reservoir or trough.
+
+Fields:
+
+```text
+template=parabolic_water_cross_section
+width=20
+depth=5
+```
+
+### `stacked_blocks_pattern`
+
+Purpose:
+
+- Staged block stacks for quadratic sequence/introduction problems.
+
+Fields:
+
+```text
+template=stacked_blocks_pattern
+stages=3
+```
+
 ## Suggested Implementation Priority
 
 Function templates:
