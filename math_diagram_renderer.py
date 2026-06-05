@@ -244,19 +244,20 @@ def format_number(value):
     fraction = Fraction(number).limit_denominator(12)
     if abs(float(fraction) - number) < 1e-6:
         return f"{fraction.numerator}/{fraction.denominator}"
-    if abs(number) < 10:
-        return f"{number:.2f}".rstrip("0").rstrip(".")
-    return f"{number:g}"
+    return ""
 
 
 def annotate_axis_value(ax, x_range, y_range, axis, value, side="auto"):
     xmin, xmax = x_range
     ymin, ymax = y_range
+    text = format_number(value)
+    if not text:
+        return
     if axis == "x" and xmin <= value <= xmax and ymin <= 0 <= ymax:
         is_above = side == "above"
         y_offset = 7 if is_above else -8
         va = "bottom" if is_above else "top"
-        ax.annotate(format_number(value), (value, 0), xytext=(0, y_offset),
+        ax.annotate(text, (value, 0), xytext=(0, y_offset),
                     textcoords="offset points", ha="center", va=va,
                     fontsize=fs(9), color="dimgray", zorder=8,
                     bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
@@ -268,10 +269,25 @@ def annotate_axis_value(ax, x_range, y_range, axis, value, side="auto"):
         y_offset = -6 if is_below else (6 if is_above else 0)
         ha = "left" if is_right else "right"
         va = "top" if is_below else ("bottom" if is_above else "center")
-        ax.annotate(format_number(value), (0, value), xytext=(x_offset, y_offset),
+        ax.annotate(text, (0, value), xytext=(x_offset, y_offset),
                     textcoords="offset points", ha=ha, va=va,
                     fontsize=fs(9), color="dimgray", zorder=8,
                     bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
+
+
+def annotate_horizontal_line_label(ax, x_range, y_range, y_value):
+    text = format_number(y_value)
+    if not text:
+        return
+    xmin, xmax = x_range
+    ymin, ymax = y_range
+    if not (ymin <= y_value <= ymax):
+        return
+    x_pos = xmin + (xmax - xmin) * 0.78
+    ax.annotate("y = " + text, (x_pos, y_value), xytext=(4, 4),
+                textcoords="offset points", ha="left", va="bottom",
+                fontsize=fs(9), color="dimgray", zorder=8,
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
 
 
 def expand_range_for_points(x_range, y_range, points):
@@ -538,7 +554,7 @@ def render_two_origin_parabolas_horizontal_line(spec, output_path):
     for equation in (eq1, eq2):
         ax.plot(x, safe_eval(equation["expr"], x), lw=lw(2), zorder=3)
     ax.axhline(horizontal_y, color="#777777", lw=lw(1.2), zorder=2)
-    annotate_axis_value(ax, x_range, y_range, "y", horizontal_y, "left_above")
+    annotate_horizontal_line_label(ax, x_range, y_range, horizontal_y)
     plot_labeled_points(ax, points)
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
