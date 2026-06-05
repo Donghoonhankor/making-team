@@ -1267,6 +1267,22 @@ function isStructuredImageSpec_(spec, language) {
     'circle': true,
     'center': true,
     'radius': true
+    ,'width': true
+    ,'height': true
+    ,'road_width': true
+    ,'road_count': true
+    ,'inner_width': true
+    ,'inner_height': true
+    ,'border_width': true
+    ,'total_length': true
+    ,'left_side': true
+    ,'right_side': true
+    ,'paper_width': true
+    ,'paper_height': true
+    ,'paper_side': true
+    ,'cut_side': true
+    ,'shade': true
+    ,'unit': true
   };
   const allowed = language === 'en' ? allowedEnglishKeys : allowedKeys;
   const ambiguousText = /(?:아래로\s*볼록|위로\s*볼록|그림과\s*같이|아래\s*그림|위\s*그림|주어진\s*그래프|문제\s*본문|색칠|대략|적당히|그래프\s*=|roughly|approximately|as shown|given graph|shade|shaded|nice|pretty)/i;
@@ -1365,12 +1381,18 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 두 이차함수 사이에 둘러싸인 렌즈형/잎사귀형 색칠 영역은 template=two_parabolas_between_area를 사용하라. 필수 항목은 equation1, equation2이다.',
     '- 원점을 지나는 여러 이차함수 그래프를 비교하는 보기형 그림은 template=parabola_family_origin을 사용하라. 필수 항목은 equations이고, 필요하면 curve_labels=a,b,c처럼 쓴다.',
     '- 이차함수 전용 템플릿에서는 points, labels, region을 쓰지 말라. 점 좌표와 색칠 영역은 렌더러가 equation에서 계산한다.',
+    '- 이차방정식 활용 도형 문제는 가능한 한 도형 전용 템플릿을 사용하라. 허용 템플릿: rectangle_cross_road, rectangle_slanted_cross_road, rectangle_multi_slanted_roads, rectangular_park_border, two_squares_on_segment, open_box_net_equal_cuts, open_box_net_rectangular_paper.',
+    '- 도로 문제는 rectangle_cross_road 또는 rectangle_slanted_cross_road 또는 rectangle_multi_slanted_roads를 사용하라. 필수 항목은 width, height, road_width이다. road_width는 문제에서 구할 값이면 x를 써도 된다.',
+    '- 공원 둘레 산책로 문제는 rectangular_park_border를 사용하라. 필수 항목은 inner_width, inner_height, border_width이다. inner_width나 inner_height는 문제에서 구할 값이면 x, x+12 같은 표현을 쓸 수 있다.',
+    '- 선분을 둘로 나누어 두 정사각형을 만드는 문제는 two_squares_on_segment를 사용하라. 필수 항목은 total_length이다.',
+    '- 정사각형 종이 네 귀퉁이를 잘라 상자를 만드는 문제는 open_box_net_equal_cuts를 사용하라. 필수 항목은 paper_side, cut_side이다. 직사각형 종이는 open_box_net_rectangular_paper를 사용하고 paper_width, paper_height, cut_side를 쓴다.',
+    '- 도형 전용 템플릿에서는 미지수 길이 x를 허용한다. 단, 함수 그래프 equation에는 여전히 미정계수나 g(x)를 남기지 말라.',
     '- 넓이 문제처럼 색칠 영역이 필요하면 region 값에 실제 경계를 적어라. 예: region=between y=x^2 and y=(x-4)^2 for 1<=y<=9 또는 region=between y=2x^2 and y=2x^2+5 for -2<=x<=1.',
     '- 색칠이 필요 없는 그림이면 region을 쓰지 말라. region 없이 이미지생성기/렌더러가 임의로 영역을 색칠한다고 기대하지 말라.',
     '- 한글 그래프 명세는 종류=좌표평면, 식=, x범위=, y범위=, 점=, 교점=, 꼭짓점=, 축=, 영역=, 표시= 항목만 사용하라.',
     '- 영어 그래프 명세는 type=coordinate_plane, equation=, x_range=, y_range=, points=, intersections=, vertex=, axis=, region=, labels= 또는 template=parabola_band_area, equation_top=, equation_bottom=, x_left=, x_right= 또는 이차함수 전용 template, equation=, equations=, equation1=, equation2=, equation_left=, equation_right=, horizontal_y=, vertical_x=, curve_labels=, x_intercept=, show_vertex=, show_x_intercepts=, show_y_intercept= 항목만 사용하라.',
     '- 한글 도형 명세는 종류=도형, 도형=, 점=, 좌표=, 변=, 각=, 직각=, 평행=, 수직=, 원=, 중심=, 반지름=, 표시= 항목만 사용하라.',
-    '- 영어 도형 명세는 type=geometry, shape=, points=, coordinates=, segments=, angles=, right_angle=, parallel=, perpendicular=, circle=, center=, radius=, labels= 항목만 사용하라.',
+    '- 영어 도형 명세는 type=geometry, shape=, points=, coordinates=, segments=, angles=, right_angle=, parallel=, perpendicular=, circle=, center=, radius=, labels= 또는 도형 전용 template, width=, height=, road_width=, road_count=, inner_width=, inner_height=, border_width=, total_length=, paper_width=, paper_height=, paper_side=, cut_side=, shade=, unit= 항목만 사용하라.',
     '- 이미지 명세에는 "문제 본문 참고", "주어진 그래프", "위 그림", "아래로 볼록한 포물선", "색칠하여 표시", "그림과 같이", "roughly", "as shown", "shaded" 같은 모호한 문장을 쓰지 말고 실제 식, 좌표, 범위, 점 이름, 선분, 각도, 길이를 명시하라.',
     '- 예: [이미지 필요7:\\n종류=좌표평면\\n식=y = x² - 4x + 3\\nx범위=-1..5\\ny범위=-2..8\\n점=A(1,0), B(3,0), C(2,-1)\\n표시=점 A, 점 B, 점 C] [IMAGE_PROMPT7:\\ntype=coordinate_plane\\nequation=y = x^2 - 4x + 3\\nx_range=-1..5\\ny_range=-2..8\\npoints=A(1,0), B(3,0), C(2,-1)\\nlabels=A, B, C]',
     '- 예: [이미지 필요8:\\n종류=좌표평면\\n식=y = x² + 2, y = x² - 3\\n영역=두 그래프와 x=1, x=4 사이\\n표시=x=1, x=4, 색칠 영역] [IMAGE_PROMPT8:\\ntemplate=parabola_band_area\\nequation_top=y = x^2 + 2\\nequation_bottom=y = x^2 - 3\\nx_left=1\\nx_right=4]',
@@ -1381,6 +1403,10 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 예: [이미지 필요14:\\n종류=좌표평면\\n식=y = 1/3*x², y = 2*x², x = 1\\n표시=A, B, C] [IMAGE_PROMPT14:\\ntemplate=two_origin_parabolas_vertical_line_ratio\\nequation1=y = 1/3*x^2\\nequation2=y = 2*x^2\\nvertical_x=1]',
     '- 예: [이미지 필요15:\\n종류=좌표평면\\n식=y = x², y = -x² + 4\\n영역=두 그래프 사이] [IMAGE_PROMPT15:\\ntemplate=two_parabolas_between_area\\nequation1=y = x^2\\nequation2=y = -x^2 + 4]',
     '- 예: [이미지 필요16:\\n종류=좌표평면\\n식=y = 2/5*x², y = x², y = -x²\\n표시=a,b,c] [IMAGE_PROMPT16:\\ntemplate=parabola_family_origin\\nequations=y = 2/5*x^2, y = x^2, y = -x^2\\ncurve_labels=a,b,c]',
+    '- 예: [이미지 필요17:\\n종류=도형\\n도형=직사각형 밭과 십자 도로\\n가로=40\\n세로=30\\n도로폭=x] [IMAGE_PROMPT17:\\ntemplate=rectangle_cross_road\\nwidth=40\\nheight=30\\nroad_width=x]',
+    '- 예: [이미지 필요18:\\n종류=도형\\n도형=직사각형 공원과 산책로\\n공원가로=x+12\\n공원세로=x\\n산책로폭=6] [IMAGE_PROMPT18:\\ntemplate=rectangular_park_border\\ninner_width=x+12\\ninner_height=x\\nborder_width=6]',
+    '- 예: [이미지 필요19:\\n종류=도형\\n도형=선분 위 두 정사각형\\n전체길이=11] [IMAGE_PROMPT19:\\ntemplate=two_squares_on_segment\\ntotal_length=11]',
+    '- 예: [이미지 필요20:\\n종류=도형\\n도형=정사각형 종이에서 네 귀퉁이 자르기\\n한변=10\\n자른정사각형=x] [IMAGE_PROMPT20:\\ntemplate=open_box_net_equal_cuts\\npaper_side=10\\ncut_side=x]',
     '- 예: [이미지 필요12:\\n종류=도형\\n도형=직각삼각형\\n점=A,B,C\\n좌표=A(0,0), B(4,0), C(4,3)\\n직각=B\\n변=AB=4, BC=3, AC=5] [IMAGE_PROMPT12:\\ntype=geometry\\nshape=right_triangle\\npoints=A,B,C\\ncoordinates=A(0,0), B(4,0), C(4,3)\\nright_angle=B\\nsegments=AB=4, BC=3, AC=5\\nlabels=A, B, C]',
     '- 원문 시험 문제를 그대로 복제하지 말고, 선정된 약점유형과 틀린 문항만 참고한다.',
     '- 쌍둥이_규칙의 생성규칙과 금지사항을 반드시 지킨다.',

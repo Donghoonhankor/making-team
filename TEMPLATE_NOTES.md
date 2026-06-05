@@ -19,6 +19,14 @@ Implemented in `math_diagram_renderer.py`:
 - `two_origin_parabolas_vertical_line_ratio`
 - `two_parabolas_between_area`
 - `parabola_family_origin`
+- `rectangle_cross_road`
+- `rectangle_slanted_cross_road`
+- `rectangle_multi_slanted_roads`
+- `rectangular_park_border`
+- `two_squares_on_segment`
+- `two_squares_from_segment`
+- `open_box_net_equal_cuts`
+- `open_box_net_rectangular_paper`
 
 Implemented behavior:
 

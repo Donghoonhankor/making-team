@@ -876,6 +876,129 @@ def render_geometry(spec, output_path):
     return []
 
 
+def parse_length(value, default=1.0):
+    text = str(value or "").strip()
+    if not text or re.search(r"[A-Za-z]", text):
+        return float(default)
+    return parse_number(text, default)
+
+
+def setup_plain_geometry_axes(ax, width, height):
+    margin = max(width, height) * 0.15
+    ax.set_xlim(-margin, width + margin)
+    ax.set_ylim(-margin, height + margin)
+    ax.set_aspect("equal", adjustable="box")
+    ax.axis("off")
+
+
+def draw_dimension(ax, start, end, text, offset=(0, 0)):
+    x1, y1 = start
+    x2, y2 = end
+    ox, oy = offset
+    ax.annotate("", xy=(x2 + ox, y2 + oy), xytext=(x1 + ox, y1 + oy),
+                arrowprops=dict(arrowstyle="<->", lw=lw(0.9), color="dimgray"))
+    ax.text((x1 + x2) / 2 + ox, (y1 + y2) / 2 + oy, text,
+            ha="center", va="center", fontsize=fs(9),
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
+
+
+def render_rectangle_cross_road(spec, output_path, slanted=False, multi=False):
+    width = parse_length(spec.get("width"), 40)
+    height = parse_length(spec.get("height"), 30)
+    road_width = parse_length(spec.get("road_width"), min(width, height) * 0.12)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="#efe1b0", edgecolor="black", lw=lw(1.2)))
+
+    if slanted or multi:
+        strips = [(-width * 0.15, width * 0.35, width * 0.55, width * 1.05)]
+        if multi:
+            strips.append((width * 0.65, width * 0.95, width * 1.15, width * 0.85))
+        for x_bottom1, x_bottom2, x_top2, x_top1 in strips:
+            ax.add_patch(plt.Polygon(
+                [(x_bottom1, 0), (x_bottom2, 0), (x_top2, height), (x_top1, height)],
+                closed=True, facecolor="white", edgecolor="#777777", lw=lw(1.0), alpha=0.95
+            ))
+        ax.add_patch(plt.Polygon(
+            [(0, height * 0.45), (width, height * 0.65), (width, height * 0.65 + road_width), (0, height * 0.45 + road_width)],
+            closed=True, facecolor="white", edgecolor="#777777", lw=lw(1.0), alpha=0.95
+        ))
+    else:
+        cx = width * 0.5 - road_width / 2
+        cy = height * 0.5 - road_width / 2
+        ax.add_patch(plt.Rectangle((cx, 0), road_width, height, facecolor="white", edgecolor="#777777", lw=lw(1.0)))
+        ax.add_patch(plt.Rectangle((0, cy), width, road_width, facecolor="white", edgecolor="#777777", lw=lw(1.0)))
+
+    draw_dimension(ax, (0, height), (width, height), format_number(width) + " m", (0, height * 0.09))
+    draw_dimension(ax, (0, 0), (0, height), format_number(height) + " m", (-width * 0.08, 0))
+    if str(spec.get("road_width", "")).strip():
+        ax.text(width * 0.82, height * 0.12, str(spec.get("road_width")).strip(),
+                fontsize=fs(9), ha="center", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_rectangular_park_border(spec, output_path):
+    inner_width = parse_length(spec.get("inner_width"), 30)
+    inner_height = parse_length(spec.get("inner_height"), 20)
+    border = parse_length(spec.get("border_width"), 6)
+    outer_width = inner_width + 2 * border
+    outer_height = inner_height + 2 * border
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, outer_width, outer_height)
+    ax.add_patch(plt.Rectangle((0, 0), outer_width, outer_height, facecolor="#c7b08a", edgecolor="black", lw=lw(1.2)))
+    ax.add_patch(plt.Rectangle((border, border), inner_width, inner_height, facecolor="#cde8c6", edgecolor="black", lw=lw(1.0)))
+    draw_dimension(ax, (border, border + inner_height), (border + inner_width, border + inner_height),
+                   format_number(inner_width) or str(spec.get("inner_width") or ""), (0, border * 0.45))
+    draw_dimension(ax, (border, border), (border, border + inner_height),
+                   format_number(inner_height) or str(spec.get("inner_height") or ""), (-border * 0.45, 0))
+    ax.text(outer_width - border / 2, outer_height / 2, format_number(border) + " m", fontsize=fs(8), rotation=90,
+            ha="center", va="center", bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_two_squares_on_segment(spec, output_path):
+    total = parse_length(spec.get("total_length"), 11)
+    left_side = total * 0.62
+    right_side = total - left_side
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, total, max(left_side, right_side))
+    ax.add_patch(plt.Rectangle((0, 0), left_side, left_side, facecolor="#f1d36f", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Rectangle((left_side, 0), right_side, right_side, facecolor="#f1d36f", edgecolor="black", lw=lw(1.1)))
+    ax.text(0, -total * 0.08, "A", fontsize=fs(10), ha="center", va="top")
+    ax.text(left_side, -total * 0.08, "C", fontsize=fs(10), ha="center", va="top")
+    ax.text(total, -total * 0.08, "B", fontsize=fs(10), ha="center", va="top")
+    draw_dimension(ax, (0, 0), (total, 0), format_number(total) + " cm", (0, -total * 0.16))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_open_box_net(spec, output_path, rectangular=False):
+    paper_side = spec.get("paper_side", "")
+    paper_width = parse_length(spec.get("paper_width") or paper_side, 10 if not rectangular else 14)
+    paper_height = parse_length(spec.get("paper_height") or paper_side, 10)
+    cut = parse_length(spec.get("cut_side"), 2)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, paper_width, paper_height)
+    ax.add_patch(plt.Rectangle((0, 0), paper_width, paper_height, facecolor="#d9ecff", edgecolor="black", lw=lw(1.1)))
+    corners = [(0, 0), (paper_width - cut, 0), (0, paper_height - cut), (paper_width - cut, paper_height - cut)]
+    for x, y in corners:
+        ax.add_patch(plt.Rectangle((x, y), cut, cut, facecolor="white", edgecolor="#888888", lw=lw(0.9), ls="--"))
+    ax.plot([cut, cut], [0, paper_height], color="#888888", lw=lw(0.8), ls="--")
+    ax.plot([paper_width - cut, paper_width - cut], [0, paper_height], color="#888888", lw=lw(0.8), ls="--")
+    ax.plot([0, paper_width], [cut, cut], color="#888888", lw=lw(0.8), ls="--")
+    ax.plot([0, paper_width], [paper_height - cut, paper_height - cut], color="#888888", lw=lw(0.8), ls="--")
+    draw_dimension(ax, (0, paper_height), (paper_width, paper_height), format_number(paper_width) + " cm", (0, paper_height * 0.1))
+    ax.text(paper_width + paper_width * 0.06, cut / 2, format_number(cut) + " cm", fontsize=fs(8), ha="left", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
 def build_output_path(input_path, output_dir, index):
     return output_dir / f"{input_path.stem}_이미지{index}.PNG"
 
@@ -895,6 +1018,20 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_two_parabolas_between_area(spec, output_path)
     elif template == "parabola_family_origin":
         unsupported = render_parabola_family_origin(spec, output_path)
+    elif template == "rectangle_cross_road":
+        unsupported = render_rectangle_cross_road(spec, output_path)
+    elif template == "rectangle_slanted_cross_road":
+        unsupported = render_rectangle_cross_road(spec, output_path, slanted=True)
+    elif template == "rectangle_multi_slanted_roads":
+        unsupported = render_rectangle_cross_road(spec, output_path, slanted=True, multi=True)
+    elif template == "rectangular_park_border":
+        unsupported = render_rectangular_park_border(spec, output_path)
+    elif template in ("two_squares_on_segment", "two_squares_from_segment"):
+        unsupported = render_two_squares_on_segment(spec, output_path)
+    elif template == "open_box_net_equal_cuts":
+        unsupported = render_open_box_net(spec, output_path)
+    elif template == "open_box_net_rectangular_paper":
+        unsupported = render_open_box_net(spec, output_path, rectangular=True)
     elif template in (
         "parabola_basic_shape",
         "parabola_xintercepts_vertex_triangle",
