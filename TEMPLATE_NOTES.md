@@ -1010,6 +1010,150 @@ small_square_side=4
 highlight_corner=true
 ```
 
+### `annulus_radius_increase`
+
+Purpose:
+
+- Ring made by increasing a circle radius, with inner radius and added width marked.
+
+Fields:
+
+```text
+template=annulus_radius_increase
+inner_radius=8
+increase=x
+```
+
+### `rectangle_u_shaped_path`
+
+Purpose:
+
+- Rectangular park/garden with a constant-width U-shaped path along three sides.
+
+Fields:
+
+```text
+template=rectangle_u_shaped_path
+width=14
+height=9
+path_width=x
+```
+
+### `linear_vertical_line_triangle`
+
+Purpose:
+
+- Triangle enclosed by a straight line, the x-axis, and a vertical line x=a.
+
+Fields:
+
+```text
+template=linear_vertical_line_triangle
+equation=y = 1/3*x - 1
+vertical_x=7
+```
+
+### `parallelogram_diagonal_intersection`
+
+Purpose:
+
+- Parallelogram with diagonals and a line from a vertex to a point on the opposite side.
+
+Fields:
+
+```text
+template=parallelogram_diagonal_intersection
+base=10
+height=6
+skew=2
+point_ratio=0.72
+```
+
+### `collinear_two_squares`
+
+Purpose:
+
+- Three or four collinear points with two squares built on adjacent segments.
+
+Fields:
+
+```text
+template=collinear_two_squares
+left_side=x
+right_side=8
+```
+
+### `square_cut_and_shift`
+
+Purpose:
+
+- Square cut by a horizontal strip and shifted/extended to form a rectangle.
+
+Fields:
+
+```text
+template=square_cut_and_shift
+side=x
+top_cut=3
+right_shift=4
+```
+
+### `rectangle_square_similar_split`
+
+Purpose:
+
+- Rectangle split into a square and a smaller similar rectangle.
+
+Fields:
+
+```text
+template=rectangle_square_similar_split
+width=12
+square_side=x
+```
+
+### `nested_rectangles_frame`
+
+Purpose:
+
+- Several concentric rectangles/squares with a uniform frame width.
+
+Fields:
+
+```text
+template=nested_rectangles_frame
+outer_width=10
+outer_height=8
+frame_width=1
+levels=3
+```
+
+### `triangular_dot_pattern`
+
+Purpose:
+
+- Staged triangular dot arrangement for quadratic sequence problems.
+
+Fields:
+
+```text
+template=triangular_dot_pattern
+stages=4
+```
+
+### `rectangular_dot_pattern`
+
+Purpose:
+
+- Staged rectangular dot arrangement for quadratic sequence problems.
+
+Fields:
+
+```text
+template=rectangular_dot_pattern
+stages=4
+```
+
 ## Suggested Implementation Priority
 
 Function templates:
