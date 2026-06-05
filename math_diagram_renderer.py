@@ -19,6 +19,7 @@ import numpy as np
 
 FIGURE_SIZE_INCHES = (1.8, 1.3)  # 720 x 520 px at 400 dpi; quarter-size in HWP/print layout.
 GEOMETRY_SIZE_INCHES = (1.5, 1.5)
+CHOICE_FIGURE_SIZE_INCHES = (1.8, 2.2)
 OUTPUT_DPI = 400
 STYLE_SCALE = 200 / OUTPUT_DPI
 
@@ -90,6 +91,28 @@ def split_csv_outside_parentheses(value):
         elif ch == ")":
             depth = max(0, depth - 1)
         if ch == "," and depth == 0:
+            item = "".join(current).strip()
+            if item:
+                items.append(item)
+            current = []
+        else:
+            current.append(ch)
+    item = "".join(current).strip()
+    if item:
+        items.append(item)
+    return items
+
+
+def split_semicolon_outside_parentheses(value):
+    items = []
+    current = []
+    depth = 0
+    for ch in value or "":
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+        if ch == ";" and depth == 0:
             item = "".join(current).strip()
             if item:
                 items.append(item)
@@ -232,6 +255,38 @@ def setup_axes(ax, x_range, y_range):
         ax.text(0, ymax, "y", ha="center", va="bottom", fontsize=fs(10), clip_on=False)
     if xmin <= 0 <= xmax and ymin <= 0 <= ymax:
         ax.text(0, 0, " O", ha="left", va="top", fontsize=fs(10), zorder=6)
+
+    ax.grid(False)
+    ax.set_aspect("auto")
+
+
+def setup_choice_axes(ax, x_range, y_range):
+    ax.set_xlim(*x_range)
+    ax.set_ylim(*y_range)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+
+    xmin, xmax = x_range
+    ymin, ymax = y_range
+    axis_arrow = dict(
+        arrowstyle="-|>",
+        color="black",
+        lw=lw(0.9),
+        mutation_scale=fs(7),
+        shrinkA=0,
+        shrinkB=0,
+    )
+    if ymin <= 0 <= ymax:
+        ax.annotate("", xy=(xmax, 0), xytext=(xmin, 0), arrowprops=axis_arrow, zorder=3)
+        ax.text(xmax, 0, " x", ha="left", va="center", fontsize=fs(7), clip_on=False)
+    if xmin <= 0 <= xmax:
+        ax.annotate("", xy=(0, ymax), xytext=(0, ymin), arrowprops=axis_arrow, zorder=3)
+        ax.text(0, ymax, "y", ha="center", va="bottom", fontsize=fs(7), clip_on=False)
+    if xmin <= 0 <= xmax and ymin <= 0 <= ymax:
+        ax.text(0, 0, " O", ha="left", va="top", fontsize=fs(7), zorder=6)
 
     ax.grid(False)
     ax.set_aspect("auto")
@@ -665,6 +720,93 @@ def render_parabola_family_origin(spec, output_path):
     return []
 
 
+def parse_choice_equations(spec):
+    raw = spec.get("choices") or spec.get("equations") or spec.get("equation") or ""
+    if ";" in raw:
+        items = split_semicolon_outside_parentheses(raw)
+    else:
+        items = split_csv_outside_parentheses(raw)
+    equations = []
+    warnings = []
+    for index, item in enumerate(items, start=1):
+        text = item.strip()
+        text = re.sub(r"^(?:[①②③④⑤⑥⑦⑧⑨⑩]|\(?\d+\)?[.)]?)\s*", "", text).strip()
+        if not text:
+            continue
+        try:
+            equation = parse_y_equation(text)
+            quadratic_coefficients(equation)
+            equations.append(equation)
+        except Exception as err:
+            warnings.append(f"choice {index} equation error: {err}")
+    return equations, warnings
+
+
+def common_quadratic_choice_range(equations):
+    x_candidates = [-3.0, 3.0, 0.0]
+    y_candidates = [0.0]
+    for equation in equations:
+        try:
+            coeffs = quadratic_coefficients(equation)
+            roots = quadratic_x_intercepts(coeffs)
+            vertex = quadratic_vertex(coeffs)
+            x_candidates.extend(roots)
+            x_candidates.append(vertex[0])
+            y_candidates.append(vertex[1])
+            if roots:
+                y_candidates.append(0.0)
+            if -10 < equation_value(equation, 0) < 10:
+                y_candidates.append(equation_value(equation, 0))
+        except Exception:
+            pass
+
+    x_range = pad_range(min(x_candidates), max(x_candidates), 0.16, 2.0)
+    y_range = pad_range(min(y_candidates), max(y_candidates), 0.16, 2.0)
+    if y_range[1] - y_range[0] < 4:
+        center = (y_range[0] + y_range[1]) / 2
+        y_range = (center - 2, center + 2)
+    return x_range, y_range
+
+
+def render_multiple_choice_parabola_position(spec, output_path):
+    equations, warnings = parse_choice_equations(spec)
+    if not equations:
+        equations = [parse_y_equation("y=x^2"), parse_y_equation("y=-x^2")]
+        warnings.append("multiple-choice template needs choices or equations")
+
+    equations = equations[:5]
+    labels = ["①", "②", "③", "④", "⑤"]
+    x_range = parse_range(spec.get("x_range"), None)
+    y_range = parse_range(spec.get("y_range"), None)
+    if not x_range or not y_range:
+        x_range, y_range = common_quadratic_choice_range(equations)
+
+    fig, axes = plt.subplots(3, 2, figsize=CHOICE_FIGURE_SIZE_INCHES)
+    axes_flat = list(axes.flatten())
+    x = np.linspace(x_range[0], x_range[1], 600)
+
+    for index, ax in enumerate(axes_flat):
+        if index >= len(equations):
+            ax.axis("off")
+            continue
+        setup_choice_axes(ax, x_range, y_range)
+        equation = equations[index]
+        try:
+            y = safe_eval(equation["expr"], x)
+            if np.isscalar(y):
+                y = np.full_like(x, float(y))
+            ax.plot(x, y, lw=lw(1.8), color="black", zorder=4)
+        except Exception as err:
+            warnings.append(f"choice {index + 1} render error: {err}")
+        ax.text(0.04, 0.92, labels[index], transform=ax.transAxes,
+                ha="left", va="top", fontsize=fs(9), zorder=8)
+
+    fig.subplots_adjust(left=0.02, right=0.98, bottom=0.02, top=0.98, wspace=0.18, hspace=0.28)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return warnings
+
+
 def shade_enclosed_region(ax, equations):
     y_equations = [equation for equation in equations if equation.get("kind") == "y"]
     verticals = sorted(equation["value"] for equation in equations if equation.get("kind") == "x")
@@ -1018,6 +1160,8 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_two_parabolas_between_area(spec, output_path)
     elif template == "parabola_family_origin":
         unsupported = render_parabola_family_origin(spec, output_path)
+    elif template == "multiple_choice_parabola_position":
+        unsupported = render_multiple_choice_parabola_position(spec, output_path)
     elif template == "rectangle_cross_road":
         unsupported = render_rectangle_cross_road(spec, output_path)
     elif template == "rectangle_slanted_cross_road":

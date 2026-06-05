@@ -1243,6 +1243,8 @@ function isStructuredImageSpec_(spec, language) {
     'horizontal_y': true,
     'vertical_x': true,
     'curve_labels': true,
+    'choices': true,
+    'correct': true,
     'x_left': true,
     'x_right': true,
     'x_range': true,
@@ -1304,7 +1306,7 @@ function hasUnresolvedImageSpecValue_(key, line) {
   const value = String(line || '').split('=').slice(1).join('=').trim();
   if (/문제\s*본문|제시된\s*점|주어진\s*점|given\s*points?|given\s*graph|as\s*shown/i.test(value)) return true;
   if (key === 'labels' && hasFormulaLikeLabel_(value)) return true;
-  if (key === '식' || key === 'equation' || key === 'equations' || key === 'equation1' || key === 'equation2' || key === 'equation_left' || key === 'equation_right' || key === 'equation_top' || key === 'equation_bottom' || key === 'labels') {
+  if (key === '식' || key === 'equation' || key === 'equations' || key === 'choices' || key === 'equation1' || key === 'equation2' || key === 'equation_left' || key === 'equation_right' || key === 'equation_top' || key === 'equation_bottom' || key === 'labels') {
     return hasUnresolvedEquationLetters_(value);
   }
   return false;
@@ -1316,7 +1318,7 @@ function hasFormulaLikeLabel_(value) {
 
 function hasUnresolvedEquationLetters_(value) {
   const source = String(value || '')
-    .replace(/x_range|y_range|x_left|x_right|type|template|coordinate_plane|geometry|parabola_band_area|equation_top|equation_bottom/gi, '')
+    .replace(/x_range|y_range|x_left|x_right|type|template|coordinate_plane|geometry|parabola_band_area|multiple_choice_parabola_position|equation_top|equation_bottom|choices|correct/gi, '')
     .replace(/[A-Z]\s*(?=\(|,|$)/g, '')
     .replace(/\b(?:sin|cos|tan|log|ln)\b/gi, '');
   return /(?:α|β|γ|theta|alpha|beta|gamma|(^|[^A-Za-z])(?:a|b|c|d|e|f|g|h|i|j|k|l|m|n|p|q|r|s|t|u|v|w|z)(?=[^A-Za-z]|$))/i.test(source);
@@ -1380,6 +1382,8 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 원점을 지나는 두 이차함수와 직선 x=a가 만나는 그림은 template=two_origin_parabolas_vertical_line_ratio를 사용하라. 필수 항목은 equation1, equation2, vertical_x이다.',
     '- 두 이차함수 사이에 둘러싸인 렌즈형/잎사귀형 색칠 영역은 template=two_parabolas_between_area를 사용하라. 필수 항목은 equation1, equation2이다.',
     '- 원점을 지나는 여러 이차함수 그래프를 비교하는 보기형 그림은 template=parabola_family_origin을 사용하라. 필수 항목은 equations이고, 필요하면 curve_labels=a,b,c처럼 쓴다.',
+    '- 이차방정식의 두 근, 아래로/위로 볼록, 꼭짓점 위치, x절편 조건을 보고 ①~⑤ 그래프를 고르는 문제는 한 장짜리 coordinate_plane을 쓰지 말고 반드시 template=multiple_choice_parabola_position을 사용하라.',
+    '- template=multiple_choice_parabola_position 필수 항목은 choices이다. choices에는 ①~⑤에 해당하는 실제 y=... 식 5개를 세미콜론(;)으로 구분해 적어라. choices에 y=f(x), y=g(x), k(x-alpha)(x-beta), 미정계수, 설명문을 넣지 말라.',
     '- 이차함수 전용 템플릿에서는 points, labels, region을 쓰지 말라. 점 좌표와 색칠 영역은 렌더러가 equation에서 계산한다.',
     '- 이차방정식 활용 도형 문제는 가능한 한 도형 전용 템플릿을 사용하라. 허용 템플릿: rectangle_cross_road, rectangle_slanted_cross_road, rectangle_multi_slanted_roads, rectangular_park_border, two_squares_on_segment, open_box_net_equal_cuts, open_box_net_rectangular_paper.',
     '- 도로 문제는 rectangle_cross_road 또는 rectangle_slanted_cross_road 또는 rectangle_multi_slanted_roads를 사용하라. 필수 항목은 width, height, road_width이다. road_width는 문제에서 구할 값이면 x를 써도 된다.',
@@ -1390,7 +1394,7 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 넓이 문제처럼 색칠 영역이 필요하면 region 값에 실제 경계를 적어라. 예: region=between y=x^2 and y=(x-4)^2 for 1<=y<=9 또는 region=between y=2x^2 and y=2x^2+5 for -2<=x<=1.',
     '- 색칠이 필요 없는 그림이면 region을 쓰지 말라. region 없이 이미지생성기/렌더러가 임의로 영역을 색칠한다고 기대하지 말라.',
     '- 한글 그래프 명세는 종류=좌표평면, 식=, x범위=, y범위=, 점=, 교점=, 꼭짓점=, 축=, 영역=, 표시= 항목만 사용하라.',
-    '- 영어 그래프 명세는 type=coordinate_plane, equation=, x_range=, y_range=, points=, intersections=, vertex=, axis=, region=, labels= 또는 template=parabola_band_area, equation_top=, equation_bottom=, x_left=, x_right= 또는 이차함수 전용 template, equation=, equations=, equation1=, equation2=, equation_left=, equation_right=, horizontal_y=, vertical_x=, curve_labels=, x_intercept=, show_vertex=, show_x_intercepts=, show_y_intercept= 항목만 사용하라.',
+    '- 영어 그래프 명세는 type=coordinate_plane, equation=, x_range=, y_range=, points=, intersections=, vertex=, axis=, region=, labels= 또는 template=parabola_band_area, equation_top=, equation_bottom=, x_left=, x_right= 또는 이차함수 전용 template, equation=, equations=, choices=, correct=, equation1=, equation2=, equation_left=, equation_right=, horizontal_y=, vertical_x=, curve_labels=, x_intercept=, show_vertex=, show_x_intercepts=, show_y_intercept= 항목만 사용하라.',
     '- 한글 도형 명세는 종류=도형, 도형=, 점=, 좌표=, 변=, 각=, 직각=, 평행=, 수직=, 원=, 중심=, 반지름=, 표시= 항목만 사용하라.',
     '- 영어 도형 명세는 type=geometry, shape=, points=, coordinates=, segments=, angles=, right_angle=, parallel=, perpendicular=, circle=, center=, radius=, labels= 또는 도형 전용 template, width=, height=, road_width=, road_count=, inner_width=, inner_height=, border_width=, total_length=, paper_width=, paper_height=, paper_side=, cut_side=, shade=, unit= 항목만 사용하라.',
     '- 이미지 명세에는 "문제 본문 참고", "주어진 그래프", "위 그림", "아래로 볼록한 포물선", "색칠하여 표시", "그림과 같이", "roughly", "as shown", "shaded" 같은 모호한 문장을 쓰지 말고 실제 식, 좌표, 범위, 점 이름, 선분, 각도, 길이를 명시하라.',
@@ -1403,6 +1407,7 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 예: [이미지 필요14:\\n종류=좌표평면\\n식=y = 1/3*x², y = 2*x², x = 1\\n표시=A, B, C] [IMAGE_PROMPT14:\\ntemplate=two_origin_parabolas_vertical_line_ratio\\nequation1=y = 1/3*x^2\\nequation2=y = 2*x^2\\nvertical_x=1]',
     '- 예: [이미지 필요15:\\n종류=좌표평면\\n식=y = x², y = -x² + 4\\n영역=두 그래프 사이] [IMAGE_PROMPT15:\\ntemplate=two_parabolas_between_area\\nequation1=y = x^2\\nequation2=y = -x^2 + 4]',
     '- 예: [이미지 필요16:\\n종류=좌표평면\\n식=y = 2/5*x², y = x², y = -x²\\n표시=a,b,c] [IMAGE_PROMPT16:\\ntemplate=parabola_family_origin\\nequations=y = 2/5*x^2, y = x^2, y = -x^2\\ncurve_labels=a,b,c]',
+    '- 예: [이미지 필요21:\\n종류=보기 그래프\\n표시=①~⑤ 이차함수 그래프] [IMAGE_PROMPT21:\\ntemplate=multiple_choice_parabola_position\\nchoices=y = (x - 1)*(x - 3); y = -(x - 1)*(x - 3); y = (x + 1)*(x - 3); y = (x - 2)^2 + 1; y = (x + 1)*(x + 3)]',
     '- 예: [이미지 필요17:\\n종류=도형\\n도형=직사각형 밭과 십자 도로\\n가로=40\\n세로=30\\n도로폭=x] [IMAGE_PROMPT17:\\ntemplate=rectangle_cross_road\\nwidth=40\\nheight=30\\nroad_width=x]',
     '- 예: [이미지 필요18:\\n종류=도형\\n도형=직사각형 공원과 산책로\\n공원가로=x+12\\n공원세로=x\\n산책로폭=6] [IMAGE_PROMPT18:\\ntemplate=rectangular_park_border\\ninner_width=x+12\\ninner_height=x\\nborder_width=6]',
     '- 예: [이미지 필요19:\\n종류=도형\\n도형=선분 위 두 정사각형\\n전체길이=11] [IMAGE_PROMPT19:\\ntemplate=two_squares_on_segment\\ntotal_length=11]',

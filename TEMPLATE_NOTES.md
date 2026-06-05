@@ -19,6 +19,7 @@ Implemented in `math_diagram_renderer.py`:
 - `two_origin_parabolas_vertical_line_ratio`
 - `two_parabolas_between_area`
 - `parabola_family_origin`
+- `multiple_choice_parabola_position`
 - `rectangle_cross_road`
 - `rectangle_slanted_cross_road`
 - `rectangle_multi_slanted_roads`
@@ -203,20 +204,21 @@ curve_labels=a,b,c
 
 Purpose:
 
-- Five small coordinate-plane choices.
-- Used for selecting the graph matching conditions such as `a>0, p<0, q>0`.
+- Five small coordinate-plane choices in one image.
+- Used for selecting the graph matching conditions such as roots, concavity, vertex position, or `a>0, p<0, q>0`.
 
 Fields:
 
 ```text
 template=multiple_choice_parabola_position
-choices=5
-condition=a>0,p<0,q>0
+choices=y = (x - 1)*(x - 3); y = -(x - 1)*(x - 3); y = (x + 1)*(x - 3); y = (x - 2)^2 + 1; y = (x + 1)*(x + 3)
 ```
 
 Notes:
 
-- This is likely useful but needs mini-plot layout support.
+- `choices` must contain concrete `y=...` equations, separated with semicolons.
+- Do not use `y=f(x)`, `y=g(x)`, unresolved coefficients, or text descriptions.
+- The renderer draws ①~⑤ as mini graphs using a shared axis range.
 
 ### `parabola_shift_from_base`
 
