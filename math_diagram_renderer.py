@@ -339,9 +339,9 @@ def annotate_horizontal_line_label(ax, x_range, y_range, y_value):
     ymin, ymax = y_range
     if not (ymin <= y_value <= ymax):
         return
-    x_pos = xmin + (xmax - xmin) * 0.90
-    ax.annotate("y = " + text, (x_pos, y_value), xytext=(-4, 7),
-                textcoords="offset points", ha="right", va="bottom",
+    x_pos = xmin + (xmax - xmin) * 0.62
+    ax.annotate("y = " + text, (x_pos, y_value), xytext=(0, -5),
+                textcoords="offset points", ha="center", va="top",
                 fontsize=fs(9), color="dimgray", zorder=8,
                 bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=fs(0.6)))
 
@@ -641,7 +641,11 @@ def render_two_origin_parabolas_horizontal_line(spec, output_path):
         ax.plot(x, safe_eval(equation["expr"], x), lw=lw(2), zorder=3)
     ax.axhline(horizontal_y, color="#777777", lw=lw(1.2), zorder=2)
     annotate_horizontal_line_label(ax, x_range, y_range, horizontal_y)
-    plot_labeled_points(ax, points)
+    for point in points:
+        ax.scatter([point["x"]], [point["y"]], color="black", s=marker_area(28), zorder=6)
+        ax.annotate(point["label"], (point["x"], point["y"]), xytext=(2, 2),
+                    textcoords="offset points", ha="left", va="bottom",
+                    fontsize=fs(10), zorder=7)
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return warnings
