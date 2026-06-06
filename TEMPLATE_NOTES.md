@@ -1304,6 +1304,96 @@ template=stacked_blocks_pattern
 stages=3
 ```
 
+### `right_triangle_equal_segments`
+
+- Right triangle with points P, Q and equal-segment marks.
+
+```text
+template=right_triangle_equal_segments
+base=6
+height=8
+p_ratio=0.5
+q_ratio=0.55
+```
+
+### `square_rotated_inscribed`
+
+- Rotated square EFGH whose vertices lie on the sides of square ABCD.
+
+```text
+template=square_rotated_inscribed
+side=12
+offset=2.5
+```
+
+### `isosceles_trapezoid_altitude`
+
+- Isosceles trapezoid with an altitude from a top vertex.
+
+```text
+template=isosceles_trapezoid_altitude
+bottom_base=10
+top_base=7
+height=5
+foot_offset=2
+```
+
+### `segment_square_triangle`
+
+- A segment split into a square and a right isosceles triangle.
+
+```text
+template=segment_square_triangle
+total_length=15
+split=5
+triangle_height=10
+```
+
+### `tiled_wall_gap`
+
+- Brick/tile wall with a missing rectangular space of a given width.
+
+```text
+template=tiled_wall_gap
+rows=3
+cols=6
+gap_cols=1
+gap_width=9
+```
+
+### `square_diagonal_paths`
+
+- Square garden with equal-width paths along both diagonals.
+
+```text
+template=square_diagonal_paths
+side=30
+path_width=x
+```
+
+### `isosceles_triangle_bisector`
+
+- Isosceles triangle with a vertex-to-base segment and a marked base angle.
+
+```text
+template=isosceles_triangle_bisector
+base=6
+equal_side=6
+base_angle=36
+```
+
+### `attached_rectangles_diagonal`
+
+- Two attached rectangles with a diagonal and shaded polygon for area-ratio problems.
+
+```text
+template=attached_rectangles_diagonal
+left_width=8
+left_height=8
+right_width=4
+right_height=4
+```
+
 ## Suggested Implementation Priority
 
 Function templates:

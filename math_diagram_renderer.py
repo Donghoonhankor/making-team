@@ -2720,6 +2720,180 @@ def render_tiled_rectangle_corner_square(spec, output_path):
     return []
 
 
+def render_right_triangle_equal_segments(spec, output_path):
+    base = parse_length(spec.get("base"), 6)
+    height = parse_length(spec.get("height"), 8)
+    p_ratio = max(0.15, min(0.85, parse_number(spec.get("p_ratio"), 0.5)))
+    q_ratio = max(0.15, min(0.85, parse_number(spec.get("q_ratio"), 0.55)))
+    a, b, c = (base, height), (0, 0), (base, 0)
+    p = (base, height * p_ratio)
+    q = (base * q_ratio, 0)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, base, height)
+    ax.add_patch(plt.Polygon([a, b, c], closed=True, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Polygon([p, q, c], closed=True, facecolor="#f4c7b8", edgecolor="#8c5a4a", lw=lw(1.0), alpha=0.75))
+    ax.plot([base - base * 0.04, base + base * 0.04], [height * 0.72, height * 0.72], color="#555555", lw=lw(0.9))
+    ax.plot([base * 0.72, base * 0.72], [-height * 0.03, height * 0.03], color="#555555", lw=lw(0.9))
+    for label, point in {"A": a, "B": b, "C": c, "P": p, "Q": q}.items():
+        ax.text(point[0], point[1], label, fontsize=fs(8), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=fs(0.3)))
+    draw_dimension(ax, b, c, length_label(spec.get("base"), base, " cm"), (0, -height * 0.1))
+    draw_dimension(ax, c, a, length_label(spec.get("height"), height, " cm"), (base * 0.1, 0))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_square_rotated_inscribed(spec, output_path):
+    side = parse_length(spec.get("side"), 12)
+    offset = max(side * 0.08, min(side * 0.42, parse_length(spec.get("offset"), side * 0.18)))
+    points = [(offset, side), (side, side - offset), (side - offset, 0), (0, offset)]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, side, side)
+    ax.add_patch(plt.Rectangle((0, 0), side, side, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Polygon(points, closed=True, facecolor="#d8c8e8", edgecolor="#555555", lw=lw(1.0), alpha=0.8))
+    for label, point in {"A": (0, side), "B": (0, 0), "C": (side, 0), "D": (side, side),
+                         "E": points[3], "F": points[2], "G": points[1], "H": points[0]}.items():
+        ax.text(point[0], point[1], label, fontsize=fs(7), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.72, pad=fs(0.25)))
+    draw_dimension(ax, (0, side), (side, side), length_label(spec.get("side"), side, " cm"), (0, side * 0.09))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_isosceles_trapezoid_altitude(spec, output_path):
+    bottom = parse_length(spec.get("bottom_base"), 10)
+    top = parse_length(spec.get("top_base"), 7)
+    height = parse_length(spec.get("height"), 5)
+    inset = (bottom - top) / 2
+    foot = max(0, min(bottom, parse_length(spec.get("foot_offset"), 2)))
+    verts = [(0, 0), (bottom, 0), (bottom - inset, height), (inset, height)]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, bottom, height)
+    ax.add_patch(plt.Polygon(verts, closed=True, facecolor="#ead8a6", edgecolor="black", lw=lw(1.1), alpha=0.82))
+    ax.plot([inset, foot], [height, 0], color="#555555", lw=lw(1.0))
+    ax.plot([foot, foot + bottom * 0.055, foot + bottom * 0.055],
+            [0, 0, height * 0.1], color="#555555", lw=lw(0.8))
+    for label, point in {"A": verts[3], "B": verts[0], "C": verts[1], "D": verts[2], "H": (foot, 0)}.items():
+        ax.text(point[0], point[1], label, fontsize=fs(8), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=fs(0.3)))
+    draw_dimension(ax, verts[0], (foot, 0), length_label(spec.get("foot_offset"), foot, " cm"), (0, -height * 0.1))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_segment_square_triangle(spec, output_path):
+    total = parse_length(spec.get("total_length"), 15)
+    split = max(total * 0.15, min(total * 0.75, parse_length(spec.get("split"), total * 0.38)))
+    square_side = split
+    tri_height = parse_length(spec.get("triangle_height"), total - split)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, total, max(square_side, tri_height))
+    ax.add_patch(plt.Rectangle((0, 0), square_side, square_side, facecolor="#f1d36f", edgecolor="black", lw=lw(1.0), alpha=0.8))
+    ax.add_patch(plt.Polygon([(split, 0), (total, 0), (total, tri_height)], closed=True,
+                             facecolor="#f1d36f", edgecolor="black", lw=lw(1.0), alpha=0.8))
+    for label, point in {"A": (0, 0), "P": (split, 0), "B": (total, 0)}.items():
+        ax.text(point[0], point[1], label, fontsize=fs(9), ha="center", va="top")
+    draw_dimension(ax, (0, 0), (total, 0), length_label(spec.get("total_length"), total, " cm"),
+                   (0, -max(square_side, tri_height) * 0.12))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_tiled_wall_gap(spec, output_path):
+    rows = bounded_count(spec.get("rows"), 3, 2, 6)
+    cols = bounded_count(spec.get("cols"), 5, 3, 9)
+    gap_cols = bounded_count(spec.get("gap_cols"), 1, 1, 3)
+    gap_width = parse_length(spec.get("gap_width"), 9)
+    cell_w, cell_h = 2.0, 1.0
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, cols * cell_w, rows * cell_h)
+    gap_start = max(1, cols - gap_cols)
+    for r in range(rows):
+        for c in range(cols):
+            if r == 0 and c >= gap_start:
+                continue
+            x = c * cell_w + (cell_w * 0.5 if r % 2 else 0)
+            if x + cell_w > cols * cell_w:
+                x = cols * cell_w - cell_w
+            color = "#8f866b" if r == 0 and c == gap_start - 1 else "#e0b193"
+            ax.add_patch(plt.Rectangle((x, r * cell_h), cell_w, cell_h, facecolor=color,
+                                       edgecolor="black", lw=lw(0.7), alpha=0.85))
+    ax.text((gap_start + gap_cols / 2) * cell_w, cell_h * 0.5,
+            length_label(spec.get("gap_width"), gap_width, " cm"), fontsize=fs(8), ha="center", va="center")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_square_diagonal_paths(spec, output_path):
+    side = parse_length(spec.get("side"), 30)
+    path = parse_length(spec.get("path_width"), side * 0.12)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, side, side)
+    ax.add_patch(plt.Rectangle((0, 0), side, side, facecolor="#d7efb7", edgecolor="black", lw=lw(1.1)))
+    offset = path / math.sqrt(2)
+    for reverse in (False, True):
+        if not reverse:
+            poly = [(0, offset), (offset, 0), (side, side - offset), (side - offset, side)]
+        else:
+            poly = [(0, side - offset), (offset, side), (side, offset), (side - offset, 0)]
+        ax.add_patch(plt.Polygon(poly, closed=True, facecolor="#bca77e", edgecolor="none", alpha=0.9))
+    ax.add_patch(plt.Rectangle((0, 0), side, side, facecolor="none", edgecolor="black", lw=lw(1.1), zorder=5))
+    draw_dimension(ax, (0, side), (side, side), length_label(spec.get("side"), side, " m"), (0, side * 0.08))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_isosceles_triangle_bisector(spec, output_path):
+    base = parse_length(spec.get("base"), 6)
+    equal_side = parse_length(spec.get("equal_side"), 6)
+    height = math.sqrt(max(equal_side * equal_side - (base / 2) ** 2, 0.1))
+    split_ratio = max(0.2, min(0.8, parse_number(spec.get("split_ratio"), 0.55)))
+    a, b, c = (base * split_ratio, height), (0, 0), (base, 0)
+    d = (base * 0.56, 0)
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, base, height)
+    ax.add_patch(plt.Polygon([a, b, c], closed=True, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.plot([a[0], d[0]], [a[1], d[1]], color="#555555", lw=lw(1.0))
+    ax.text(b[0] + base * 0.13, height * 0.1, str(spec.get("base_angle") or "36°"), fontsize=fs(8))
+    for label, point in {"A": a, "B": b, "C": c, "D": d}.items():
+        ax.text(point[0], point[1], label, fontsize=fs(8), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.75, pad=fs(0.3)))
+    draw_dimension(ax, b, c, length_label(spec.get("base"), base, " cm"), (0, -height * 0.11))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_attached_rectangles_diagonal(spec, output_path):
+    left_w = parse_length(spec.get("left_width"), 8)
+    left_h = parse_length(spec.get("left_height"), 8)
+    right_w = parse_length(spec.get("right_width"), 4)
+    right_h = parse_length(spec.get("right_height"), 4)
+    width = left_w + right_w
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, left_h)
+    ax.add_patch(plt.Rectangle((0, 0), left_w, left_h, facecolor="white", edgecolor="black", lw=lw(1.1)))
+    ax.add_patch(plt.Rectangle((left_w, 0), right_w, right_h, facecolor="white", edgecolor="black", lw=lw(1.0)))
+    q = (left_w, right_h * 0.45)
+    p = (left_w + right_w * 0.65, 0)
+    ax.add_patch(plt.Polygon([(0, left_h), (0, 0), p, q], closed=True,
+                             facecolor="#76b5e8", edgecolor="#4a7da3", lw=lw(1.0), alpha=0.78))
+    ax.plot([0, left_h], [left_h, 0], color="#555555", lw=lw(0.9))
+    for label, point in {"A": (0, left_h), "B": (0, 0), "C": (left_w, 0), "D": (left_w, left_h),
+                         "E": (width, 0), "F": (width, right_h), "G": (left_w, right_h), "P": p, "Q": q}.items():
+        ax.text(point[0], point[1], label, fontsize=fs(7), ha="center", va="center",
+                bbox=dict(facecolor="white", edgecolor="none", alpha=0.72, pad=fs(0.25)))
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
 def render_circle_template(spec, output_path, semicircles=False):
     outer = parse_length(spec.get("outer_radius") or spec.get("outer_diameter"), 6)
     if semicircles or spec.get("outer_diameter"):
@@ -2907,6 +3081,22 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_right_isosceles_triangle_inner(spec, output_path, parallelogram=True)
     elif template == "tiled_rectangle_corner_square":
         unsupported = render_tiled_rectangle_corner_square(spec, output_path)
+    elif template == "right_triangle_equal_segments":
+        unsupported = render_right_triangle_equal_segments(spec, output_path)
+    elif template == "square_rotated_inscribed":
+        unsupported = render_square_rotated_inscribed(spec, output_path)
+    elif template == "isosceles_trapezoid_altitude":
+        unsupported = render_isosceles_trapezoid_altitude(spec, output_path)
+    elif template == "segment_square_triangle":
+        unsupported = render_segment_square_triangle(spec, output_path)
+    elif template == "tiled_wall_gap":
+        unsupported = render_tiled_wall_gap(spec, output_path)
+    elif template == "square_diagonal_paths":
+        unsupported = render_square_diagonal_paths(spec, output_path)
+    elif template == "isosceles_triangle_bisector":
+        unsupported = render_isosceles_triangle_bisector(spec, output_path)
+    elif template == "attached_rectangles_diagonal":
+        unsupported = render_attached_rectangles_diagonal(spec, output_path)
     elif template in (
         "parabola_basic_shape",
         "parabola_xintercepts_vertex_triangle",
