@@ -1394,6 +1394,93 @@ right_width=4
 right_height=4
 ```
 
+### `rectangle_corner_extension`
+
+- Rectangle whose width and height are both extended to make a larger rectangle.
+
+```text
+template=rectangle_corner_extension
+width=5
+height=3
+add_width=x
+add_height=x
+```
+
+### `parabola_horizontal_equal_intersections`
+
+- Two parabolas cut by one horizontal line, with ordered intersection points.
+
+```text
+template=parabola_horizontal_equal_intersections
+equation1=y = 3*x^2
+equation2=y = x^2
+horizontal_y=9
+```
+
+### `parabola_inscribed_square`
+
+- Axis-aligned square whose vertices relate to a parabola.
+
+```text
+template=parabola_inscribed_square
+equation=y = 2*x^2
+x_left=1
+x_right=2
+```
+
+### `two_parabolas_vertical_trapezoid`
+
+- Trapezoid with vertical sides between an upward and a downward parabola.
+
+```text
+template=two_parabolas_vertical_trapezoid
+equation_top=y = 2*x^2
+equation_bottom=y = -4/3*x^2
+x_left=-1
+x_right=1
+```
+
+### `two_parabolas_vertical_strip`
+
+- Area enclosed by two parabolas and a vertical line.
+
+```text
+template=two_parabolas_vertical_strip
+equation1=y = -3*x^2
+equation2=y = -3*(x-1)^2 + 3
+vertical_x=1
+```
+
+### `parabola_horizontal_chord_rectangle`
+
+- Rectangle between the x-axis and a horizontal chord of a parabola.
+
+```text
+template=parabola_horizontal_chord_rectangle
+equation=y = -x^2
+horizontal_y=-4
+```
+
+### `parabola_vertex_horizontal_chord_triangle`
+
+- Triangle formed by a parabola vertex and a horizontal chord.
+
+```text
+template=parabola_vertex_horizontal_chord_triangle
+equation=y = x^2 - 6*x + 4
+chord_y=4
+```
+
+### `three_parabolas_enclosed_region`
+
+- Shaded region enclosed by three parabolas.
+
+```text
+template=three_parabolas_enclosed_region
+equations=y = x^2; y = (x-4)^2; y = x^2 - 4*x
+x_range=-1..5
+```
+
 ## Suggested Implementation Priority
 
 Function templates:

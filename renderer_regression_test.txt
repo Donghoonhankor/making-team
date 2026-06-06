@@ -630,3 +630,58 @@ height=60
 road_width=x
 road_count=3
 ]
+
+[IMAGE_PROMPT97:
+template=rectangle_corner_extension
+width=5
+height=3
+add_width=x
+add_height=x
+]
+
+[IMAGE_PROMPT98:
+template=parabola_horizontal_equal_intersections
+equation1=y = 3*x^2
+equation2=y = x^2
+horizontal_y=9
+]
+
+[IMAGE_PROMPT99:
+template=parabola_inscribed_square
+equation=y = 2*x^2
+x_left=1
+x_right=2
+]
+
+[IMAGE_PROMPT100:
+template=two_parabolas_vertical_trapezoid
+equation_top=y = 2*x^2
+equation_bottom=y = -4/3*x^2
+x_left=-1
+x_right=1
+]
+
+[IMAGE_PROMPT101:
+template=two_parabolas_vertical_strip
+equation1=y = -3*x^2
+equation2=y = -3*(x-1)^2 + 3
+vertical_x=1
+]
+
+[IMAGE_PROMPT102:
+template=parabola_horizontal_chord_rectangle
+equation=y = -x^2
+horizontal_y=-4
+]
+
+[IMAGE_PROMPT103:
+template=parabola_vertex_horizontal_chord_triangle
+equation=y = x^2 - 6*x + 4
+chord_y=4
+]
+
+[IMAGE_PROMPT104:
+template=three_parabolas_enclosed_region
+equations=y = x^2; y = (x-4)^2; y = x^2 - 4*x
+x_range=-1..5
+]
