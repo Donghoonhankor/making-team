@@ -68,6 +68,16 @@ def parse_key_values(block):
     return data
 
 
+def validate_spec_structure(spec, block):
+    warnings = []
+    if "≠uation" in block:
+        warnings.append("image spec appears to have a corrupted equation key")
+    for key, value in spec.items():
+        if "≠" in key or "≠uation" in value:
+            warnings.append(f"corrupted key/value near {key}")
+    return warnings
+
+
 def parse_range(value, default):
     if not value:
         return default
@@ -2398,6 +2408,8 @@ def render_coordinate_plane(spec, output_path):
     x_range, y_range = auto_focus_ranges(spec, equations, points, x_range, y_range)
     x_range, y_range = expand_range_for_points(x_range, y_range, points)
     warnings = []
+    if not spec.get("equation", "").strip() and not points:
+        warnings.append("coordinate_plane has no equation or concrete points")
     if has_ambiguous_points(spec.get("points", "")):
         warnings.append("points field is ambiguous")
 
@@ -3111,6 +3123,7 @@ def render_block(index, block, input_path, output_dir):
     kind = spec.get("type", "coordinate_plane")
     template = spec.get("template", "")
     output_path = build_output_path(input_path, output_dir, index)
+    validation_warnings = validate_spec_structure(spec, block)
     if template == "parabola_band_area":
         unsupported = render_parabola_band_area(spec, output_path)
     elif template == "two_origin_parabolas_horizontal_line":
@@ -3304,7 +3317,7 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_parabola_calculated_template(spec, output_path, "parabola_xintercepts_vertex_triangle")
     else:
         unsupported = render_coordinate_plane(spec, output_path)
-    return output_path, unsupported, spec
+    return output_path, validation_warnings + unsupported, spec
 
 
 def main():
@@ -3336,6 +3349,7 @@ def main():
         print("No IMAGE_PROMPT blocks found.")
         return
 
+    failed = []
     for index, block in blocks:
         output_path, unsupported, spec = render_block(index, block, input_path, output_dir)
         print(f"[{index}] {output_path.resolve()}")
@@ -3343,10 +3357,18 @@ def main():
             print("  warnings:")
             for item in unsupported:
                 print(f"  - {item}")
+            failed.append(index)
+            try:
+                output_path.unlink()
+            except FileNotFoundError:
+                pass
 
     print("")
     print(f"완료: {len(blocks)}개 이미지 생성")
     print(f"저장 위치: {output_dir.resolve()}")
+    if failed:
+        print(f"실패: {len(failed)}개 이미지 명세 오류 ({', '.join(map(str, failed))})")
+        sys.exit(2)
 
 
 def select_input_file():

@@ -1063,7 +1063,7 @@ function fillGeneratedProblemReviewPlaceholders_(plan, generated, issues) {
     if (imageSpecIssueSet[number]) {
       return {
         number,
-        problem: '[검수 필요: 이미지 명세가 이미지생성기 형식과 맞지 않습니다.]\n' + String(existing.problem || existing.body || '').trim(),
+        problem: '[검수 필요: 이미지 명세가 이미지생성기 형식과 맞지 않습니다.]\n' + stripImageTags_(String(existing.problem || existing.body || '').trim()),
         answer: String(existing.answer || '').trim() || '[검수 필요: 정답 누락]',
         solution: String(existing.solution || '').trim() || '[검수 필요: 해설 누락]',
         body: String(existing.body || '').trim(),
@@ -1326,6 +1326,7 @@ function hasUnresolvedEquationLetters_(value) {
     .replace(/x_range|y_range|x_left|x_right|type|template|coordinate_plane|geometry|parabola_band_area|multiple_choice_parabola_position|equation_top|equation_bottom|choices|correct/gi, '')
     .replace(/[A-Z]\s*(?=\(|,|$)/g, '')
     .replace(/\b(?:sin|cos|tan|log|ln)\b/gi, '');
+  if (/(^|[^A-Za-z])(?:a|b|c|d|e|f|g|h|i|j|k|l|m|n|p|q|r|s|t|u|v|w|z)\s*(?:\*?\s*x|\()/i.test(source)) return true;
   return /(?:α|β|γ|theta|alpha|beta|gamma|(^|[^A-Za-z])(?:a|b|c|d|e|f|g|h|i|j|k|l|m|n|p|q|r|s|t|u|v|w|z)(?=[^A-Za-z]|$))/i.test(source);
 }
 
@@ -1582,7 +1583,7 @@ function applyCurriculumLevelToPlan_(items, curriculumLevel) {
 }
 
 function buildReviewProblemWithExisting_(number, planItem, existing, reason) {
-  const problem = String(existing && (existing.problem || existing.body) || '').trim();
+  const problem = stripImageTags_(String(existing && (existing.problem || existing.body) || '').trim());
   if (!problem) return buildReviewProblemItem_(number, planItem, reason);
 
   return {
@@ -1629,34 +1630,139 @@ function canBuildReliableFallbackImageTags_(problem, planItem) {
   if (kind === 'geometry') {
     return extractNamedPoints_(problem).length >= 3;
   }
-  return extractMathExpressions_(problem).length > 0 || extractCoordinatePoints_(problem).length >= 2;
+  if (buildTemplateFallbackCoordinatePlaneTags_(problem, 0)) return true;
+  const yEquations = extractConcreteYEquationsForImage_(problem);
+  const points = extractCoordinatePoints_(problem);
+  const needsRelationshipDiagram = /(?:넓이|영역|둘러싸인|사다리꼴|삼각형|사각형|정사각형|내접|색칠)/.test(problem);
+  return !needsRelationshipDiagram && (yEquations.length > 0 || points.length >= 2);
 }
 
 function buildFallbackCoordinatePlaneTags_(problem, number) {
-  const equations = extractMathExpressions_(problem).filter(expr => /[xy]|함수|그래프/.test(expr)).slice(0, 4);
-  const points = extractCoordinatePoints_(problem).slice(0, 8);
-  const equationText = equations.length ? equations.join(', ') : '문제 본문에 제시된 이차함수 그래프';
-  const pointsText = points.length ? points.join(', ') : '문제 본문에 제시된 점';
-  const englishEquationText = equationText.replace(/²/g, '^2');
+  const templateTags = buildTemplateFallbackCoordinatePlaneTags_(problem, number);
+  if (templateTags) return templateTags;
 
-  return [
+  const equations = extractConcreteYEquationsForImage_(problem).slice(0, 4);
+  const points = extractCoordinatePoints_(problem).slice(0, 8);
+  const equationText = equations.join(', ');
+  const pointsText = points.join(', ');
+  const englishEquationText = equationText.replace(/²/g, '^2');
+  const koreanLines = [
     '[이미지 필요' + number + ':',
     '종류=좌표평면',
     '식=' + equationText,
     'x범위=-6..6',
-    'y범위=-10..10',
-    '점=' + pointsText,
-    '표시=점 이름',
-    ']',
+    'y범위=-10..10'
+  ];
+  const englishLines = [
     '[IMAGE_PROMPT' + number + ':',
     'type=coordinate_plane',
     'equation=' + englishEquationText,
     'x_range=-6..6',
-    'y_range=-10..10',
-    'points=' + pointsText,
-    'labels=A, B, C',
+    'y_range=-10..10'
+  ];
+  if (points.length) {
+    koreanLines.push('점=' + pointsText, '표시=점 이름');
+    englishLines.push('points=' + pointsText);
+  }
+  return koreanLines.concat([
+    ']',
+  ], englishLines, [
     ']'
-  ].join('\n');
+  ]).join('\n');
+}
+
+function buildTemplateFallbackCoordinatePlaneTags_(problem, number) {
+  const yEquations = extractConcreteYEquationsForImage_(problem);
+  const verticals = extractConcreteAxisLinesForImage_(problem, 'x');
+  if (/넓이|둘러싸인|부분/.test(problem) && yEquations.length >= 2 && verticals.length >= 2) {
+    return buildImageTagsFromLines_(number, [
+      '종류=좌표평면',
+      '식=' + yEquations.slice(0, 2).join(', '),
+      '영역=두 그래프와 x=' + verticals[0] + ', x=' + verticals[1] + ' 사이',
+      '표시=색칠 영역'
+    ], [
+      'template=parabola_band_area',
+      'equation_top=' + toImageEquation_(yEquations[0]),
+      'equation_bottom=' + toImageEquation_(yEquations[1]),
+      'x_left=' + verticals[0],
+      'x_right=' + verticals[1]
+    ]);
+  }
+
+  if (/폭|좁|넓|그래프/.test(problem) && yEquations.length >= 3) {
+    return buildImageTagsFromLines_(number, [
+      '종류=좌표평면',
+      '식=' + yEquations.slice(0, 4).join(', '),
+      '표시=그래프 비교'
+    ], [
+      'template=' + (yEquations.length >= 4 ? 'parabola_four_family_origin' : 'parabola_family_origin'),
+      'equations=' + yEquations.slice(0, 4).map(toImageEquation_).join(', ')
+    ]);
+  }
+
+  if (/정사각형/.test(problem) && yEquations.length >= 1 && /그래프/.test(problem)) {
+    return buildImageTagsFromLines_(number, [
+      '종류=좌표평면',
+      '식=' + yEquations[0],
+      '표시=포물선 위 정사각형'
+    ], [
+      'template=parabola_inscribed_square',
+      'equation=' + toImageEquation_(yEquations[0])
+    ]);
+  }
+
+  if (/x축.*만나는.*두 점|두 점.*x축|꼭짓점/.test(problem) && yEquations.length >= 1) {
+    return buildImageTagsFromLines_(number, [
+      '종류=좌표평면',
+      '식=' + yEquations[0],
+      '표시=x축 교점과 꼭짓점'
+    ], [
+      'template=parabola_xintercepts_vertex_triangle',
+      'equation=' + toImageEquation_(yEquations[0])
+    ]);
+  }
+
+  return '';
+}
+
+function buildImageTagsFromLines_(number, koreanLines, englishLines) {
+  return [
+    '[이미지 필요' + number + ':'
+  ].concat(koreanLines).concat([
+    ']',
+    '[IMAGE_PROMPT' + number + ':'
+  ]).concat(englishLines).concat([
+    ']'
+  ]).join('\n');
+}
+
+function extractConcreteYEquationsForImage_(problem) {
+  return unique_(extractMathExpressions_(problem)
+    .map(expr => String(expr || '').trim())
+    .filter(expr => /^y\s*=/.test(expr))
+    .filter(expr => /x/.test(expr))
+    .filter(expr => !hasUnresolvedEquationLetters_(expr)));
+}
+
+function extractConcreteAxisLinesForImage_(problem, axis) {
+  const regex = axis === 'x'
+    ? /^x\s*=\s*(-?\d+(?:\/\d+)?(?:\.\d+)?)$/
+    : /^y\s*=\s*(-?\d+(?:\/\d+)?(?:\.\d+)?)$/;
+  return unique_(extractMathExpressions_(problem)
+    .map(expr => String(expr || '').trim())
+    .map(expr => {
+      const match = expr.match(regex);
+      return match ? match[1] : '';
+    })
+    .filter(Boolean));
+}
+
+function toImageEquation_(equation) {
+  return String(equation || '')
+    .replace(/²/g, '^2')
+    .replace(/−/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function buildFallbackGeometryTags_(problem, number) {
@@ -1984,6 +2090,12 @@ function buildStudentHistorySummary_(studentName, currentWrongProblems) {
     ? summary
     : buildStudentHistorySummaryFromRaw_(studentName, currentWrongProblems);
   return Object.assign({}, baseSummary, buildStudentAssessmentSummary_(studentName));
+}
+
+function stripImageTags_(text) {
+  return String(text || '')
+    .replace(/\[(?:이미지\s*필요|IMAGE_PROMPT)\s*\d*\s*:[\s\S]*?\]/gi, '')
+    .trim();
 }
 
 function buildStudentWeaknessSummary_(studentName, currentWrongProblems) {
@@ -2873,7 +2985,7 @@ function cleanGeneratedText_(value) {
     .replace(/\\cdot/g, '·')
     .replace(/\\leq/g, '≤')
     .replace(/\\geq/g, '≥')
-    .replace(/\\neq/g, '≠')
+    .replace(/\\neq(?![A-Za-z])/g, '≠')
     .replace(/\\sqrt\s*\{([^}]+)\}/g, '√$1')
     .replace(/\\frac\s*\{([^}]+)\}\s*\{([^}]+)\}/g, '$1/$2')
     .replace(/\$([^$]+)\$/g, '$1')
