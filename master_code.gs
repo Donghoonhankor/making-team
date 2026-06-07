@@ -66,6 +66,7 @@ const DEFAULT_REQUEST_DELAY_MS = 12000;
 const DEFAULT_STUDENT_COOLDOWN_MS = 60000;
 const STALE_RUNNING_QUEUE_MS = 8 * 60 * 1000;
 const MAX_RETRIES = 3;
+const PERFECT_SCORE_TEXT = '오답 없음 (100점)';
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -558,6 +559,9 @@ function handleSimilarProblems_(targetSheetName, targetRow, payload) {
   const teacherHeaders = getHeaderMap_(teacherSheet);
   const rowObject = readRowObject_(teacherSheet, targetRow);
   const wrongProblems = lookupWrongProblems_(payload.examName, payload.wrongNumbersText);
+  if (!wrongProblems.length) {
+    throw new Error('오답이 없는 100점 기록에는 쌍둥이 문항을 생성할 수 없습니다.');
+  }
   const rulesByType = readTwinRules_();
   const missingTypes = unique_(wrongProblems.map(item => item.type).filter(type => !rulesByType[type]));
   if (missingTypes.length) {
@@ -871,6 +875,7 @@ function buildReportPrompt_(studentName, examName, wrongProblems, historySummary
     '문체는 친절하고 구체적이되 과장하지 말라.',
     '학생명: ' + studentName,
     '시험명: ' + examName,
+    '이번 시험 결과: ' + (wrongProblems.length ? '오답 있음' : PERFECT_SCORE_TEXT),
     '오답 목록(JSON): ' + JSON.stringify(wrongProblems),
     '누적 오답 요약(JSON): ' + JSON.stringify(historySummary || {}),
     '',
@@ -1850,6 +1855,7 @@ function formatGeneratedProblems_(studentName, examName, plan, generatedProblems
 }
 
 function lookupWrongProblems_(examName, wrongNumbersText) {
+  if (isPerfectScoreText_(wrongNumbersText)) return [];
   const requested = parseProblemNumbers_(wrongNumbersText);
 
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.PROBLEM_BANK);
@@ -1959,7 +1965,15 @@ function upsertWrongHistory_(teacherSheetName, teacherRow, studentName, examName
   const now = new Date();
   const rowsToAppend = [];
   const newProblemsForSummary = [];
-  wrongProblems.forEach(problem => {
+  const historyProblems = wrongProblems.length ? wrongProblems : [{
+    problemNumber: PERFECT_SCORE_TEXT,
+    type: PERFECT_SCORE_TEXT,
+    rawType: PERFECT_SCORE_TEXT,
+    unit1: '',
+    unit2: '',
+    answer: '100점'
+  }];
+  historyProblems.forEach(problem => {
     const key = buildWrongHistoryKey_(studentName, examName, problem.problemNumber);
     const rowNumber = existing[key];
     const values = {
@@ -1984,7 +1998,7 @@ function upsertWrongHistory_(teacherSheetName, teacherRow, studentName, examName
       setRowValues_(sheet, rowNumber, headers, values);
     } else {
       rowsToAppend.push(HEADERS.WRONG_HISTORY.map(header => values[header] || ''));
-      newProblemsForSummary.push(problem);
+      if (!isPerfectHistoryRow_(values)) newProblemsForSummary.push(problem);
     }
   });
 
@@ -1998,8 +2012,10 @@ function upsertWrongHistory_(teacherSheetName, teacherRow, studentName, examName
 
 function buildStudentHistorySummary_(studentName, currentWrongProblems) {
   const summary = buildStudentWeaknessSummary_(studentName, currentWrongProblems);
-  if (summary.recordCount > 0) return summary;
-  return buildStudentHistorySummaryFromRaw_(studentName, currentWrongProblems);
+  const baseSummary = summary.recordCount > 0
+    ? summary
+    : buildStudentHistorySummaryFromRaw_(studentName, currentWrongProblems);
+  return Object.assign({}, baseSummary, buildStudentAssessmentSummary_(studentName));
 }
 
 function buildStudentWeaknessSummary_(studentName, currentWrongProblems) {
@@ -2056,11 +2072,12 @@ function buildStudentHistorySummaryFromRaw_(studentName, currentWrongProblems) {
   const rows = readObjects_(sheet)
     .map(item => item.rowObject)
     .filter(row => String(row['학생 이름']) === String(studentName));
+  const wrongRows = rows.filter(row => !isPerfectHistoryRow_(row));
 
   const monthlyUnitTypes = {};
   const repeatedTypes = {};
   const repeatedUnits = {};
-  rows.forEach(row => {
+  wrongRows.forEach(row => {
     const month = getHistoryMonth_(row['시험일'], row['시험지 이름'], row['기록일시']);
     const unit = String(row['상위 단원'] || '미분류').trim();
     const type = String(row['문제 유형'] || '미분류').trim();
@@ -2081,12 +2098,41 @@ function buildStudentHistorySummaryFromRaw_(studentName, currentWrongProblems) {
 
   return {
     source: SHEETS.WRONG_HISTORY,
-    recordCount: rows.length,
+    recordCount: wrongRows.length,
     currentWeakTypes: Object.keys(currentKeys),
     monthlyUnitWeakTypeCounts: monthSummary,
     repeatedTypes: topCounts_(repeatedTypes, 10),
     repeatedUnits: topCounts_(repeatedUnits, 10)
   };
+}
+
+function buildStudentAssessmentSummary_(studentName) {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.WRONG_HISTORY);
+  if (!sheet) return { assessmentCount: 0, perfectScoreCount: 0, perfectScoreExamNames: [] };
+
+  const rows = readObjects_(sheet)
+    .map(item => item.rowObject)
+    .filter(row => String(row['학생 이름']) === String(studentName));
+  const assessments = {};
+  const perfectScores = {};
+  rows.forEach(row => {
+    const examName = String(row['시험지 이름'] || '').trim();
+    const examDate = String(row['시험일'] || '').trim();
+    const key = [examName, examDate].join('||');
+    if (!examName) return;
+    assessments[key] = true;
+    if (isPerfectHistoryRow_(row)) perfectScores[key] = examName;
+  });
+
+  return {
+    assessmentCount: Object.keys(assessments).length,
+    perfectScoreCount: Object.keys(perfectScores).length,
+    perfectScoreExamNames: Object.keys(perfectScores).map(key => perfectScores[key]).slice(-10)
+  };
+}
+
+function isPerfectHistoryRow_(row) {
+  return isPerfectScoreText_(row && (row['문제번호'] || row['문제 유형']));
 }
 
 function buildWrongHistoryKey_(studentName, examName, problemNumber) {
@@ -2485,6 +2531,14 @@ function parseProblemNumbers_(text) {
     .split(',')
     .map(part => normalizeProblemNumber_(part))
     .filter(Boolean);
+}
+
+function isPerfectScoreText_(text) {
+  const normalized = String(text || '').replace(/\s+/g, '');
+  return normalized === '오답없음(100점)' ||
+    normalized === '오답없음' ||
+    normalized === '100점' ||
+    normalized === '틀린문제없음';
 }
 
 function normalizeProblemNumber_(value) {

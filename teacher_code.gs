@@ -45,6 +45,7 @@ const WRONG_INPUT_FIXED_HEADERS = {
 
 const WRONG_INPUT_PROBLEM_START_COLUMN = 3;
 const WRONG_INPUT_STUDENT_NAME_COLUMN = 2;
+const PERFECT_SCORE_TEXT = '오답 없음 (100점)';
 
 const TEACHER_TASK_TYPES = {
   STUDENT_REPORT: 'STUDENT_REPORT',
@@ -182,12 +183,15 @@ function submitWrongInputSelections() {
     const wrongNumbers = row
       .map((checked, columnIndex) => checked === true ? problemNumbers[columnIndex] : '')
       .filter(Boolean);
-    if (!wrongNumbers.length) return;
 
-    rowsToAppend.push(buildTeacherOutputRow_(studentName, examName, wrongNumbers.join(', ')));
+    rowsToAppend.push(buildTeacherOutputRow_(
+      studentName,
+      examName,
+      wrongNumbers.length ? wrongNumbers.join(', ') : PERFECT_SCORE_TEXT
+    ));
   });
 
-  if (!rowsToAppend.length) throw new Error('체크된 오답이 없습니다.');
+  if (!rowsToAppend.length) throw new Error('입력할 학생 이름이 없습니다.');
 
   outputSheet
     .getRange(outputSheet.getLastRow() + 1, 1, rowsToAppend.length, TEACHER_HEADERS.length)
