@@ -2510,10 +2510,20 @@ function isPerfectScoreText_(text) {
 }
 
 function normalizeProblemNumber_(value) {
-  return String(value || '')
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return (value.getMonth() + 1) + ',' + value.getDate();
+  }
+  const text = String(value || '')
     .replace(/\s+/g, '')
     .replace(/[–—]/g, '-')
     .trim();
+  const dateMatch = text.match(/^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(\d{1,2})\d{4}/i);
+  if (!dateMatch) return text;
+  const months = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+  };
+  return months[dateMatch[1].toLowerCase()] + ',' + Number(dateMatch[2]);
 }
 
 function expandRequestedProblemNumbers_(requestedNumbers, byExactNumber) {

@@ -111,6 +111,7 @@ function resetWrongInputSheet() {
 function formatTeacherOutputSheet_(sheet) {
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, 1, TEACHER_HEADERS.length).setFontWeight('bold').setBackground('#f1f3f4');
+  sheet.getRange(2, 3, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('@');
   sheet.autoResizeColumns(1, TEACHER_HEADERS.length);
 }
 
@@ -144,7 +145,9 @@ function loadWrongInputProblemNumbers() {
   sheet.getRange(2, WRONG_INPUT_PROBLEM_START_COLUMN, 1, lastColumn - WRONG_INPUT_PROBLEM_START_COLUMN + 1).clearContent();
   sheet.getRange(3, WRONG_INPUT_PROBLEM_START_COLUMN, maxRows, lastColumn - WRONG_INPUT_PROBLEM_START_COLUMN + 1).clearContent().removeCheckboxes();
 
-  sheet.getRange(2, WRONG_INPUT_PROBLEM_START_COLUMN, 1, problemNumbers.length).setValues([problemNumbers]);
+  sheet.getRange(2, WRONG_INPUT_PROBLEM_START_COLUMN, 1, problemNumbers.length)
+    .setNumberFormat('@')
+    .setValues([problemNumbers]);
   sheet.getRange(3, WRONG_INPUT_PROBLEM_START_COLUMN, maxRows, problemNumbers.length).insertCheckboxes();
   sheet
     .getRange(2, WRONG_INPUT_PROBLEM_START_COLUMN, maxRows + 1, problemNumbers.length)
@@ -167,7 +170,7 @@ function submitWrongInputSelections() {
   if (lastRow < 3 || lastColumn < WRONG_INPUT_PROBLEM_START_COLUMN) throw new Error('입력할 학생/문제번호가 없습니다.');
 
   const problemNumbers = inputSheet.getRange(2, WRONG_INPUT_PROBLEM_START_COLUMN, 1, lastColumn - WRONG_INPUT_PROBLEM_START_COLUMN + 1).getValues()[0]
-    .map((value) => String(value || '').trim())
+    .map(normalizeProblemNumber_)
     .filter(Boolean);
   if (!problemNumbers.length) throw new Error('문제번호를 먼저 불러오세요.');
 
@@ -193,8 +196,10 @@ function submitWrongInputSelections() {
 
   if (!rowsToAppend.length) throw new Error('입력할 학생 이름이 없습니다.');
 
+  const outputStartRow = outputSheet.getLastRow() + 1;
+  outputSheet.getRange(outputStartRow, 3, rowsToAppend.length, 1).setNumberFormat('@');
   outputSheet
-    .getRange(outputSheet.getLastRow() + 1, 1, rowsToAppend.length, TEACHER_HEADERS.length)
+    .getRange(outputStartRow, 1, rowsToAppend.length, TEACHER_HEADERS.length)
     .setValues(rowsToAppend);
 }
 
@@ -244,7 +249,7 @@ function buildPayloadFromRow_(sheet, headers, row, taskType) {
     teacherRow: row,
     studentName: getCellByHeader_(sheet, headers, row, '학생 이름'),
     examName: getCellByHeader_(sheet, headers, row, '시험지 이름'),
-    wrongNumbers: getCellByHeader_(sheet, headers, row, '틀린 문제 번호'),
+    wrongNumbers: normalizeProblemNumber_(getCellByHeader_(sheet, headers, row, '틀린 문제 번호')),
     requestedAt: new Date().toISOString(),
   };
 }
@@ -439,7 +444,21 @@ function extractSpreadsheetId_(idOrUrl) {
 }
 
 function normalizeProblemNumber_(value) {
-  return String(value || '').trim();
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return (value.getMonth() + 1) + ', ' + value.getDate();
+  }
+  return normalizeSerializedDateProblemNumber_(String(value || '').trim());
+}
+
+function normalizeSerializedDateProblemNumber_(text) {
+  const compact = String(text || '').replace(/\s+/g, '');
+  const match = compact.match(/^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(\d{1,2})\d{4}/i);
+  if (!match) return text;
+  const months = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+  };
+  return months[match[1].toLowerCase()] + ', ' + Number(match[2]);
 }
 
 function compareProblemNumbers_(a, b) {
