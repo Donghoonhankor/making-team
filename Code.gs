@@ -1343,6 +1343,10 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '',
     '요구사항:'
   ].concat(curriculumLines).concat([
+    '- 문항 계획(JSON)에 problemTemplateHint, imageTemplateHint, templateInstruction이 있으면 그 지시는 강제 조건이다. 해당 문항은 그 구조로 문제를 만들고, 다른 그림 구조로 바꾸지 말라.',
+    '- imageTemplateHint가 있는 문항의 [IMAGE_PROMPT번호: ...] 첫 줄은 반드시 template=문항계획의 imageTemplateHint 값이어야 한다.',
+    '- problemTemplateHint는 문제의 뼈대다. 약점유형만 비슷하게 새로 만들지 말고, problemTemplateHint와 templateInstruction에 맞는 문항으로 출제하라.',
+    '- templateRequiredFields가 있으면 [IMAGE_PROMPT번호: ...] 안에 그 항목을 모두 채워라. y=f(x), y=g(x), 미정계수, "문제 본문 참고" 같은 미완성 값은 금지다.',
     '- 반드시 문항 계획의 약점유형, 생성유형, 문항번호, 난이도를 그대로 따른다.',
     '- 생성유형이 5지선다형이면 문제 본문에 반드시 ①, ②, ③, ④, ⑤ 선택지를 모두 포함하라.',
     '- 생성유형이 단답형이면 ①, ②, ③, ④, ⑤ 선택지를 절대 쓰지 말고, 최종 답만 요구하는 문항으로 작성하라.',
@@ -1398,12 +1402,44 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 선분을 둘로 나누어 두 정사각형을 만드는 문제는 two_squares_on_segment를 사용하라. 필수 항목은 total_length이다.',
     '- 정사각형 종이 네 귀퉁이를 잘라 상자를 만드는 문제는 open_box_net_equal_cuts를 사용하라. 필수 항목은 paper_side, cut_side이다. 직사각형 종이는 open_box_net_rectangular_paper를 사용하고 paper_width, paper_height, cut_side를 쓴다.',
     '- 도형 전용 템플릿에서는 미지수 길이 x를 허용한다. 단, 함수 그래프 equation에는 여전히 미정계수나 g(x)를 남기지 말라.',
+    '- 사용 가능한 전용 템플릿이 있으면 자유 coordinate_plane 또는 자유 geometry 명세보다 전용 template을 우선 사용하라.',
+    '- 이차함수/함수 템플릿: parabola_basic_shape, parabola_axis_values, parabola_xintercepts_vertex_triangle, parabola_xintercepts_yintercept_triangle, parabola_yintercept_vertex_xintercept_triangle, parabola_xintercepts_vertex_yintercept_quadrilateral, parabola_vertex_yintercept_origin_triangle, parabola_yaxis_xpositive_parallelogram, parabola_point_xaxis_triangle, parabola_line_intersections_triangle, parabola_band_area, parabola_family_origin, parabola_four_family_origin, multiple_choice_parabola_position, parabola_shift_from_base, parabola_horizontal_equal_intersections, parabola_inscribed_square, parabola_horizontal_chord_rectangle, parabola_vertex_horizontal_chord_triangle, two_parabolas_same_width_horizontal_chord, two_origin_parabolas_horizontal_line, two_origin_parabolas_vertical_line_ratio, two_origin_parabolas_parallelogram, parabola_diamond_on_axes, two_parabolas_between_area, two_parabolas_lens_rectangle, two_parabolas_vertical_trapezoid, two_parabolas_vertical_strip, two_parabolas_square, two_parabolas_shared_vertex_intersections, three_parabolas_enclosed_region, line_to_parabola_quadrant_match, quadratic_motion_height.',
+    '- 일차함수/일차방정식 템플릿: linear_basic_intercepts, linear_point_guides, linear_axis_triangle, linear_vertical_line_triangle, linear_two_lines_region, linear_square_under_line, linear_parallel_lines, multiple_choice_linear_position. equation/equations에는 실제 y=... 또는 ax+by+c=0 식만 넣어라.',
+    '- 도형/표 템플릿: grid_number_table, tiled_rectangles_layout, regular_polygon_chain, rectangle_side_point_triangle, rectangle_cut_corner, rectangle_expanding_sides, three_semicircles, folded_rectangle_overlap, square_internal_rectangles, regular_polygon_diagonals, annulus_area, annulus_radius_increase, circle_with_two_semicircles, rectangle_point_triangle, rectangle_cross_road, rectangle_slanted_cross_road, rectangle_multi_slanted_roads, rectangle_u_shaped_path, square_expanded_garden, rectangular_park_border, rectangle_diagonal_flower_path, two_squares_on_segment, two_squares_from_segment, growing_rectangle, open_box_net_equal_cuts, open_box_net_rectangular_paper, folded_tray, adjacent_rectangles, moving_points_rectangle_triangle, right_isosceles_triangle_inner_rectangle, right_isosceles_triangle_parallelogram, tiled_rectangle_corner_square, parallelogram_diagonal_intersection, collinear_two_squares, square_cut_and_shift, rectangle_square_similar_split, nested_rectangles_frame, triangular_dot_pattern, rectangular_dot_pattern, right_triangle_equal_segments, square_rotated_inscribed, isosceles_trapezoid_altitude, segment_square_triangle, tiled_wall_gap, square_diagonal_paths, isosceles_triangle_bisector, attached_rectangles_diagonal.',
+    '- 한 직선의 x절편/y절편 그림은 template=linear_basic_intercepts를 사용하라. 직선 위 점과 축으로 내린 점선이 필요하면 template=linear_point_guides를 사용하고 points=A(5,8), B(0,3)처럼 실제 좌표를 넣어라.',
+    '- 직선과 x축/y축/수직선으로 둘러싸인 삼각형은 template=linear_axis_triangle을 사용하라. 두 개 이상의 직선으로 둘러싸인 삼각형/사각형 영역은 template=linear_two_lines_region을 사용하고 equations를 세미콜론(;)으로 구분하라.',
+    '- 직선과 x축 및 수직선 x=a로 둘러싸인 삼각형이 핵심이면 template=linear_vertical_line_triangle을 사용할 수 있다. 필수 항목은 equation, vertical_x이다.',
+    '- 포물선의 꼭짓점/절편 숫자만 필요한 작은 그래프는 template=parabola_axis_values를 사용하라. 점 이름 A,B,C가 필요한 삼각형/사각형 유형이 아니면 작은 그림에 불필요한 점 이름을 넣지 말라.',
+    '- 포물선의 꼭짓점, y절편, 원점이 만드는 삼각형은 template=parabola_vertex_yintercept_origin_triangle을 사용하라. x절편 A,B, 꼭짓점 C, y절편 D가 함께 필요한 사각형/비율 그림은 template=parabola_xintercepts_vertex_yintercept_quadrilateral을 사용하라.',
+    '- 포물선과 직선의 두 교점 및 x축으로 내린 수선이 핵심이면 template=parabola_line_intersections_triangle을 사용하라. 포물선 위 점 P와 O, x축 위 A가 만드는 삼각형은 template=parabola_point_xaxis_triangle을 사용하라.',
+    '- 두 포물선 사이 렌즈 영역과 내부 직사각형은 template=two_parabolas_lens_rectangle을 사용하라. 원점을 공유하는 여러 포물선 비교는 template=parabola_four_family_origin을 사용하라.',
+    '- 물체 높이-시간 포물선은 template=quadratic_motion_height를 사용하라. 포물선 단면 호수/수조는 template=parabolic_water_cross_section, 단계별 블록 쌓기는 template=stacked_blocks_pattern을 사용하라.',
+    '- 두 포물선과 수평선의 여러 교점이 등간격으로 놓이는 그림은 template=parabola_horizontal_equal_intersections를 사용하라. 포물선 위 정사각형은 template=parabola_inscribed_square를 사용하라.',
+    '- 두 포물선 사이의 세로 변 사다리꼴은 template=two_parabolas_vertical_trapezoid, 두 포물선과 수직선으로 둘러싸인 영역은 template=two_parabolas_vertical_strip을 사용하라.',
+    '- 포물선의 수평 현과 x축이 만드는 직사각형은 template=parabola_horizontal_chord_rectangle, 꼭짓점과 수평 현이 만드는 삼각형은 template=parabola_vertex_horizontal_chord_triangle을 사용하라.',
+    '- 세 포물선으로 둘러싸인 복합 색칠 영역은 template=three_parabolas_enclosed_region을 사용하라. 가로와 세로를 각각 늘린 직사각형은 template=rectangle_corner_extension을 사용하라.',
+    '- 일차함수 보기 그래프 ①~⑤는 template=multiple_choice_linear_position을 사용하고 choices에 실제 직선식 5개를 세미콜론(;)으로 넣어라.',
+    '- 숫자표/격자표는 template=grid_number_table을 사용하고 rows, cols, entries=row,col,text;row,col,text를 넣어라. 작은 직사각형 여러 개로 큰 직사각형을 만든 그림은 template=tiled_rectangles_layout을 사용하라.',
+    '- 성냥개비/정다각형 이어 붙이기 문제는 template=regular_polygon_chain을 사용하라. 인접한 정다각형은 한 변 전체를 공유해야 하며 떨어뜨려 그리지 말라.',
+    '- adjacent_rectangles, two_squares_from_segment, regular_polygon_chain처럼 도형을 이어 붙이는 템플릿은 옆 도형과 변을 공유하는 그림으로 명세하라. 도형 사이에 틈을 만들거나 따로 떨어뜨려 배치하지 말라.',
+    '- 직사각형에서 점 이동/모서리 절단/가로세로 확장/접기/내부 분할 그림은 rectangle_side_point_triangle, rectangle_cut_corner, rectangle_expanding_sides, folded_rectangle_overlap, square_internal_rectangles 중 가장 가까운 템플릿을 사용하라.',
+    '- 큰 반원과 같은 지름 위의 작은 반원 2개로 된 색칠 영역은 template=three_semicircles를 사용하고 diameter, split을 넣어라.',
+    '- 반지름을 x만큼 늘린 원의 띠는 template=annulus_radius_increase를 사용하고 inner_radius, increase를 넣어라. 세 변을 따라 일정한 폭의 ㄷ자 길/도로는 template=rectangle_u_shaped_path를 사용하라.',
+    '- 평행사변형의 대각선/교점/내부 삼각형은 template=parallelogram_diagonal_intersection을, 한 직선 위 두 정사각형은 template=collinear_two_squares를, 정사각형 절단 후 붙인 도형은 template=square_cut_and_shift를 사용하라.',
+    '- 직사각형이 정사각형과 닮은꼴 직사각형으로 나뉘면 template=rectangle_square_similar_split을 사용하라. 여러 겹 테두리 정사각형/직사각형은 template=nested_rectangles_frame을 사용하라.',
+    '- 단계별 바둑돌 배열은 삼각수형이면 template=triangular_dot_pattern, 직사각형 배열이면 template=rectangular_dot_pattern을 사용하라.',
+    '- 직각삼각형에서 빗변/두 변 위 점과 같은 길이 표시가 있으면 template=right_triangle_equal_segments를 사용하라. 정사각형 각 변 위 점을 이은 회전 정사각형은 template=square_rotated_inscribed를 사용하라.',
+    '- 등변사다리꼴과 높이는 template=isosceles_trapezoid_altitude, 한 선분 위 정사각형과 직각이등변삼각형은 template=segment_square_triangle을 사용하라.',
+    '- 벽돌/타일을 붙인 벽과 빈 공간은 template=tiled_wall_gap, 정사각형 대각선 방향의 X자 길은 template=square_diagonal_paths를 사용하라.',
+    '- 이등변삼각형의 내부 선분과 각도 문제는 template=isosceles_triangle_bisector, 붙은 두 직사각형과 대각선/색칠 영역은 template=attached_rectangles_diagonal을 사용하라.',
+    '- 도로 템플릿(rectangle_cross_road, rectangle_slanted_cross_road, rectangle_multi_slanted_roads)에서는 road_width=x를 넣어도 그림에 x 라벨이 표시되지 않는다. 도로폭 글자 표시가 필요하다고 가정하지 말라.',
     '- 넓이 문제처럼 색칠 영역이 필요하면 region 값에 실제 경계를 적어라. 예: region=between y=x^2 and y=(x-4)^2 for 1<=y<=9 또는 region=between y=2x^2 and y=2x^2+5 for -2<=x<=1.',
     '- 색칠이 필요 없는 그림이면 region을 쓰지 말라. region 없이 이미지생성기/렌더러가 임의로 영역을 색칠한다고 기대하지 말라.',
     '- 한글 그래프 명세는 종류=좌표평면, 식=, x범위=, y범위=, 점=, 교점=, 꼭짓점=, 축=, 영역=, 표시= 항목만 사용하라.',
-    '- 영어 그래프 명세는 type=coordinate_plane, equation=, x_range=, y_range=, points=, intersections=, vertex=, axis=, region=, labels= 또는 template=parabola_band_area, equation_top=, equation_bottom=, x_left=, x_right= 또는 이차함수 전용 template, equation=, equations=, choices=, correct=, equation1=, equation2=, equation_left=, equation_right=, horizontal_y=, vertical_x=, curve_labels=, x_intercept=, show_vertex=, show_x_intercepts=, show_y_intercept= 항목만 사용하라.',
+    '- 영어 그래프 명세는 type=coordinate_plane, equation=, x_range=, y_range=, points=, intersections=, vertex=, axis=, region=, labels= 또는 template=parabola_band_area, equation_top=, equation_bottom=, x_left=, x_right= 또는 이차함수 전용 template, equation=, equations=, choices=, correct=, equation1=, equation2=, equation_top=, equation_bottom=, equation_left=, equation_right=, line_equation=, horizontal_y=, vertical_x=, curve_labels=, x_intercept=, point_x=, base_x=, show_guides=, show_vertex=, show_x_intercepts=, show_y_intercept= 항목만 사용하라.',
     '- 한글 도형 명세는 종류=도형, 도형=, 점=, 좌표=, 변=, 각=, 직각=, 평행=, 수직=, 원=, 중심=, 반지름=, 표시= 항목만 사용하라.',
     '- 영어 도형 명세는 type=geometry, shape=, points=, coordinates=, segments=, angles=, right_angle=, parallel=, perpendicular=, circle=, center=, radius=, labels= 또는 도형 전용 template, width=, height=, road_width=, road_count=, inner_width=, inner_height=, border_width=, total_length=, paper_width=, paper_height=, paper_side=, cut_side=, shade=, unit= 항목만 사용하라.',
+    '- 전용 템플릿 추가 영어 항목은 rows, cols, entries, cell_width, cell_height, side, sides, count, stages, dot_size, point_side, point_ratio, p_ratio, q_ratio, split_ratio, triangle_points, top_cut, right_cut, right_expand, bottom_expand, right_shift, add_width, add_height, diameter, split, fold_x, inner_x, inner_y, offsets, guide_xs, point_labels, top_width, bottom_width, top_base, bottom_base, left_height, right_height, x_labels, y_labels, labels_top, labels_bottom, diagonal, fill, radius, outer_radius, inner_radius, increase, radius_gap, center_gap, square_side, equal_side, base_angle, foot_offset, triangle_height, gap_cols, gap_width, chord_y, move_time, speed, p_label, q_label, r_label, verticals, horizontals, base, skew, path_width, frame_width, levels, left_side, right_side, depth, cell를 허용한다.',
     '- 이미지 명세에는 "문제 본문 참고", "주어진 그래프", "위 그림", "아래로 볼록한 포물선", "색칠하여 표시", "그림과 같이", "roughly", "as shown", "shaded" 같은 모호한 문장을 쓰지 말고 실제 식, 좌표, 범위, 점 이름, 선분, 각도, 길이를 명시하라.',
     '- 예: [이미지 필요7:\\n종류=좌표평면\\n식=y = x² - 4x + 3\\nx범위=-1..5\\ny범위=-2..8\\n점=A(1,0), B(3,0), C(2,-1)\\n표시=점 A, 점 B, 점 C] [IMAGE_PROMPT7:\\ntype=coordinate_plane\\nequation=y = x^2 - 4x + 3\\nx_range=-1..5\\ny_range=-2..8\\npoints=A(1,0), B(3,0), C(2,-1)\\nlabels=A, B, C]',
     '- 예: [이미지 필요8:\\n종류=좌표평면\\n식=y = x² + 2, y = x² - 3\\n영역=두 그래프와 x=1, x=4 사이\\n표시=x=1, x=4, 색칠 영역] [IMAGE_PROMPT8:\\ntemplate=parabola_band_area\\nequation_top=y = x^2 + 2\\nequation_bottom=y = x^2 - 3\\nx_left=1\\nx_right=4]',
@@ -1502,13 +1538,14 @@ function buildTwinGenerationPlan_(wrongProblems, examName, targetSheetName) {
   formOrder.forEach(form => {
     const formItems = shuffle_(itemsWithoutNumber.filter(item => item.formType === form));
     formItems.forEach((item, index) => {
-      numbered.push({
+      const templateHint = getTemplateHintForWeakType_(item.weakType);
+      numbered.push(Object.assign({
         number: numbered.length + 1,
         formOrdinal: index + 1,
         weakType: item.weakType,
         formType: item.formType,
         difficulty: (index + 1) % 2 === 1 ? '중' : randomChoice_(['상', '하'])
-      });
+      }, templateHint));
     });
   });
 
@@ -1828,10 +1865,11 @@ function applyImageRequirementsToPlan_(items, configuredImageCount) {
   selected.forEach(item => selectedByNumber[Number(item.number)] = true);
 
   return items.map(item => {
+    const templateHint = getTemplateHintForWeakType_(item.weakType);
     const imageRequired = Boolean(selectedByNumber[Number(item.number)]);
-    return Object.assign({}, item, {
+    return Object.assign({}, item, templateHint, {
       imageRequired,
-      imageKind: imageRequired ? getImageKindForWeakType_(item.weakType) : ''
+      imageKind: imageRequired ? (templateHint.imageKind || getImageKindForWeakType_(item.weakType)) : ''
     });
   });
 }
@@ -1854,11 +1892,108 @@ function isImageFriendlyWeakType_(weakType) {
 
 function isImageEligiblePlanItem_(item) {
   const weakType = String(item && item.weakType || '');
+  if (getTemplateHintForWeakType_(weakType).imageTemplateHint) return !isImageAnswerLeakRiskType_(weakType);
   return isImageFriendlyWeakType_(weakType) && !isImageAnswerLeakRiskType_(weakType);
 }
 
 function isImageAnswerLeakRiskType_(weakType) {
   return /(?:사분면|지나지\s*않|지나는\s*사분면|그래프가\s*지나|위치\s*판단|부호\s*판단|증가|감소|최댓값|최솟값|해의\s*개수|교점의?\s*개수|개형\s*판단)/.test(String(weakType || ''));
+}
+
+function getTemplateHintForWeakType_(weakType) {
+  const type = normalizeTemplateHintSource_(weakType);
+  if (!type) return {};
+
+  if (/(?:보기|고르|알맞은|바르게|그래프).*(?:아래로볼록|위로볼록|두근|x절편|개형|사분면)|(?:아래로볼록|위로볼록|두근|x절편|개형|사분면).*(?:보기|고르|알맞은|바르게|그래프)/.test(type)) {
+    return buildTemplateHint_('multiple_choice_parabola_graph', 'multiple_choice_parabola_position', 'coordinate_plane', '이차방정식의 두 근, 볼록 방향, 꼭짓점 위치 등을 만족하는 1~5번 포물선 보기 그래프를 만들고 그중 하나를 고르게 한다.', 'choices');
+  }
+
+  if (/(?:x축|x절편|근).*(?:꼭짓점|정점).*(?:삼각형|넓이)|(?:꼭짓점|정점).*(?:x축|x절편|근).*(?:삼각형|넓이)/.test(type)) {
+    return buildTemplateHint_('parabola_xintercepts_vertex_triangle_area', 'parabola_xintercepts_vertex_triangle', 'coordinate_plane', '포물선의 두 x축 교점을 A,B, 꼭짓점을 C로 두고 삼각형 ABC의 넓이 또는 좌표를 묻는다.', 'equation');
+  }
+
+  if (/(?:x축|x절편).*(?:y축|y절편).*(?:삼각형|넓이)|(?:y축|y절편).*(?:x축|x절편).*(?:삼각형|넓이)/.test(type)) {
+    return buildTemplateHint_('parabola_xintercepts_yintercept_triangle_area', 'parabola_xintercepts_yintercept_triangle', 'coordinate_plane', '포물선의 두 x축 교점을 A,B, y축 교점을 C로 두고 삼각형 ABC의 넓이 또는 좌표를 묻는다.', 'equation');
+  }
+
+  if (/(?:y축|y절편).*(?:꼭짓점|정점).*(?:원점|x축|삼각형|넓이)|(?:꼭짓점|정점).*(?:y축|y절편).*(?:원점|x축|삼각형|넓이)/.test(type)) {
+    return buildTemplateHint_('parabola_yintercept_vertex_xintercept_triangle_area', 'parabola_yintercept_vertex_xintercept_triangle', 'coordinate_plane', '포물선의 y축 교점, 꼭짓점, 한 x축 교점이 만드는 삼각형을 이용해 좌표나 넓이를 묻는다.', 'equation, x_intercept');
+  }
+
+  if (/(?:두|2).*이차함수.*(?:수직선|x=|둘러싸|넓이)|(?:수직선|x=).*(?:두|2).*이차함수.*(?:둘러싸|넓이)|(?:f\(x\)|g\(x\)).*(?:x=|수직선|넓이)/.test(type)) {
+    return buildTemplateHint_('two_parabolas_vertical_band_area', 'parabola_band_area', 'coordinate_plane', '두 이차함수와 두 수직선 x=a, x=b로 둘러싸인 영역의 넓이를 묻는다.', 'equation_top, equation_bottom, x_left, x_right');
+  }
+
+  if (/(?:원점|O).*(?:두|2).*이차함수.*(?:y=|수평선|직선).*(?:교점|PQ|QR|길이|비)|(?:수평선|직선y).*(?:두|2).*이차함수/.test(type)) {
+    return buildTemplateHint_('two_origin_parabolas_horizontal_line', 'two_origin_parabolas_horizontal_line', 'coordinate_plane', '원점을 지나는 두 포물선과 수평선 y=k의 교점을 이용해 길이, 비, 좌표를 묻는다.', 'equation1, equation2, horizontal_y');
+  }
+
+  if (/(?:원점|O).*(?:두|2).*이차함수.*(?:x=|수직선|직선).*(?:교점|비|길이)|(?:수직선|직선x).*(?:두|2).*이차함수/.test(type)) {
+    return buildTemplateHint_('two_origin_parabolas_vertical_line_ratio', 'two_origin_parabolas_vertical_line_ratio', 'coordinate_plane', '원점을 지나는 두 포물선과 수직선 x=a의 교점을 이용해 길이, 비, 좌표를 묻는다.', 'equation1, equation2, vertical_x');
+  }
+
+  if (/(?:두|2).*이차함수.*(?:사이|렌즈|잎사귀|둘러싸).*넓이|(?:사이|렌즈|잎사귀).*(?:두|2).*이차함수/.test(type)) {
+    return buildTemplateHint_('two_parabolas_between_area', 'two_parabolas_between_area', 'coordinate_plane', '두 포물선이 둘러싸는 렌즈형 영역의 넓이를 묻는다.', 'equation1, equation2');
+  }
+
+  if (/(?:원점|O).*(?:여러|계수|a).*이차함수|y=ax|포물선.*계수.*비교/.test(type)) {
+    return buildTemplateHint_('parabola_family_origin', 'parabola_family_origin', 'coordinate_plane', '원점을 공유하는 여러 포물선의 폭, 볼록 방향, 계수를 비교한다.', 'equations, curve_labels');
+  }
+
+  if (/(?:평행이동|축의방향|대칭이동).*(?:이차함수|포물선)|(?:이차함수|포물선).*(?:평행이동|축의방향|대칭이동)/.test(type)) {
+    return buildTemplateHint_('parabola_shift_or_axis_values', 'parabola_axis_values', 'coordinate_plane', '평행이동 또는 축의 방향 변화 후 꼭짓점, 절편, 식의 계수를 묻는다.', 'equation');
+  }
+
+  if (/(?:직선|일차함수).*(?:x절편|y절편|축과만나는점)|(?:x절편|y절편).*(?:직선|일차함수)/.test(type)) {
+    return buildTemplateHint_('linear_intercepts', 'linear_basic_intercepts', 'coordinate_plane', '일차함수의 x절편과 y절편 또는 축과 만나는 점을 묻는다.', 'equation');
+  }
+
+  if (/(?:직선|일차함수).*(?:보기|고르|알맞은|바르게)|(?:보기|고르|알맞은|바르게).*(?:직선|일차함수)/.test(type)) {
+    return buildTemplateHint_('multiple_choice_linear_graph', 'multiple_choice_linear_position', 'coordinate_plane', '1~5번 직선 보기 그래프 중 조건에 맞는 그래프를 고르게 한다.', 'choices');
+  }
+
+  if (/(?:도로|길|통로).*(?:직사각형|밭|땅|화단)|(?:직사각형|밭|땅|화단).*(?:도로|길|통로)/.test(type)) {
+    const slanted = /(?:비스듬|기울|대각|평행사변형|사선)/.test(type);
+    return buildTemplateHint_(slanted ? 'rectangle_slanted_road_area' : 'rectangle_cross_road_area', slanted ? 'rectangle_slanted_cross_road' : 'rectangle_cross_road', 'geometry', '직사각형 모양의 땅 또는 밭에 일정한 폭의 길/도로를 내고 남은 넓이나 길의 폭을 묻는다.', 'width, height, road_width');
+  }
+
+  if (/(?:공원|산책로|테두리|둘레길|가장자리).*(?:직사각형|가로|세로)|(?:직사각형|가로|세로).*(?:공원|산책로|테두리|둘레길|가장자리)/.test(type)) {
+    return buildTemplateHint_('rectangular_park_border_area', 'rectangular_park_border', 'geometry', '직사각형 공원 둘레에 일정한 폭의 산책로나 테두리를 만들고 넓이를 이용해 길이를 묻는다.', 'inner_width, inner_height, border_width');
+  }
+
+  if (/(?:정사각형|직사각형).*(?:종이|귀퉁이|상자|전개도|잘라).*부피|(?:상자|전개도|귀퉁이).*(?:정사각형|직사각형|종이)/.test(type)) {
+    const rectangular = /직사각형/.test(type);
+    return buildTemplateHint_('open_box_net', rectangular ? 'open_box_net_rectangular_paper' : 'open_box_net_equal_cuts', 'geometry', '종이의 네 귀퉁이에서 같은 크기의 정사각형을 잘라 뚜껑 없는 상자를 만들고 부피나 원래 길이를 묻는다.', rectangular ? 'paper_width, paper_height, cut_side' : 'paper_side, cut_side');
+  }
+
+  if (/(?:두|2).*정사각형|선분.*정사각형|정사각형.*두개|정사각형.*넓이의합/.test(type)) {
+    return buildTemplateHint_('two_squares_on_segment', 'two_squares_on_segment', 'geometry', '한 선분을 나누어 두 정사각형을 만들고 둘의 넓이 합이나 변의 길이를 묻는다.', 'total_length');
+  }
+
+  if (/(?:원|동심원|띠).*(?:반지름|넓이|색칠)|(?:반지름).*(?:늘|증가).*(?:원|넓이)/.test(type)) {
+    const increased = /(?:늘|증가)/.test(type);
+    return buildTemplateHint_('annulus_or_circle_area', increased ? 'annulus_radius_increase' : 'annulus_area', 'geometry', '원 또는 동심원의 색칠된 띠 영역을 이용해 반지름이나 넓이를 묻는다.', increased ? 'inner_radius, increase' : 'outer_radius, inner_radius');
+  }
+
+  return {};
+}
+
+function normalizeTemplateHintSource_(value) {
+  return String(value || '')
+    .replace(/\s+/g, '')
+    .replace(/[Ⅱ]/g, 'II')
+    .replace(/[Ⅰ]/g, 'I')
+    .trim();
+}
+
+function buildTemplateHint_(problemTemplateHint, imageTemplateHint, imageKind, instruction, requiredFields) {
+  return {
+    problemTemplateHint,
+    imageTemplateHint,
+    imageKind,
+    templateInstruction: instruction,
+    templateRequiredFields: requiredFields
+  };
 }
 
 function getImageKindForWeakType_(weakType) {

@@ -1343,6 +1343,10 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '',
     '요구사항:'
   ].concat(curriculumLines).concat([
+    '- 문항 계획(JSON)에 problemTemplateHint, imageTemplateHint, templateInstruction이 있으면 그 지시는 강제 조건이다. 해당 문항은 그 구조로 문제를 만들고, 다른 그림 구조로 바꾸지 말라.',
+    '- imageTemplateHint가 있는 문항의 [IMAGE_PROMPT번호: ...] 첫 줄은 반드시 template=문항계획의 imageTemplateHint 값이어야 한다.',
+    '- problemTemplateHint는 문제의 뼈대다. 약점유형만 비슷하게 새로 만들지 말고, problemTemplateHint와 templateInstruction에 맞는 문항으로 출제하라.',
+    '- templateRequiredFields가 있으면 [IMAGE_PROMPT번호: ...] 안에 그 항목을 모두 채워라. y=f(x), y=g(x), 미정계수, "문제 본문 참고" 같은 미완성 값은 금지다.',
     '- 반드시 문항 계획의 약점유형, 생성유형, 문항번호, 난이도를 그대로 따른다.',
     '- 생성유형이 5지선다형이면 문제 본문에 반드시 ①, ②, ③, ④, ⑤ 선택지를 모두 포함하라.',
     '- 생성유형이 단답형이면 ①, ②, ③, ④, ⑤ 선택지를 절대 쓰지 말고, 최종 답만 요구하는 문항으로 작성하라.',
@@ -1534,13 +1538,14 @@ function buildTwinGenerationPlan_(wrongProblems, examName, targetSheetName) {
   formOrder.forEach(form => {
     const formItems = shuffle_(itemsWithoutNumber.filter(item => item.formType === form));
     formItems.forEach((item, index) => {
-      numbered.push({
+      const templateHint = getTemplateHintForWeakType_(item.weakType);
+      numbered.push(Object.assign({
         number: numbered.length + 1,
         formOrdinal: index + 1,
         weakType: item.weakType,
         formType: item.formType,
         difficulty: (index + 1) % 2 === 1 ? '중' : randomChoice_(['상', '하'])
-      });
+      }, templateHint));
     });
   });
 
@@ -1860,10 +1865,11 @@ function applyImageRequirementsToPlan_(items, configuredImageCount) {
   selected.forEach(item => selectedByNumber[Number(item.number)] = true);
 
   return items.map(item => {
+    const templateHint = getTemplateHintForWeakType_(item.weakType);
     const imageRequired = Boolean(selectedByNumber[Number(item.number)]);
-    return Object.assign({}, item, {
+    return Object.assign({}, item, templateHint, {
       imageRequired,
-      imageKind: imageRequired ? getImageKindForWeakType_(item.weakType) : ''
+      imageKind: imageRequired ? (templateHint.imageKind || getImageKindForWeakType_(item.weakType)) : ''
     });
   });
 }
@@ -1886,11 +1892,108 @@ function isImageFriendlyWeakType_(weakType) {
 
 function isImageEligiblePlanItem_(item) {
   const weakType = String(item && item.weakType || '');
+  if (getTemplateHintForWeakType_(weakType).imageTemplateHint) return !isImageAnswerLeakRiskType_(weakType);
   return isImageFriendlyWeakType_(weakType) && !isImageAnswerLeakRiskType_(weakType);
 }
 
 function isImageAnswerLeakRiskType_(weakType) {
   return /(?:사분면|지나지\s*않|지나는\s*사분면|그래프가\s*지나|위치\s*판단|부호\s*판단|증가|감소|최댓값|최솟값|해의\s*개수|교점의?\s*개수|개형\s*판단)/.test(String(weakType || ''));
+}
+
+function getTemplateHintForWeakType_(weakType) {
+  const type = normalizeTemplateHintSource_(weakType);
+  if (!type) return {};
+
+  if (/(?:보기|고르|알맞은|바르게|그래프).*(?:아래로볼록|위로볼록|두근|x절편|개형|사분면)|(?:아래로볼록|위로볼록|두근|x절편|개형|사분면).*(?:보기|고르|알맞은|바르게|그래프)/.test(type)) {
+    return buildTemplateHint_('multiple_choice_parabola_graph', 'multiple_choice_parabola_position', 'coordinate_plane', '이차방정식의 두 근, 볼록 방향, 꼭짓점 위치 등을 만족하는 1~5번 포물선 보기 그래프를 만들고 그중 하나를 고르게 한다.', 'choices');
+  }
+
+  if (/(?:x축|x절편|근).*(?:꼭짓점|정점).*(?:삼각형|넓이)|(?:꼭짓점|정점).*(?:x축|x절편|근).*(?:삼각형|넓이)/.test(type)) {
+    return buildTemplateHint_('parabola_xintercepts_vertex_triangle_area', 'parabola_xintercepts_vertex_triangle', 'coordinate_plane', '포물선의 두 x축 교점을 A,B, 꼭짓점을 C로 두고 삼각형 ABC의 넓이 또는 좌표를 묻는다.', 'equation');
+  }
+
+  if (/(?:x축|x절편).*(?:y축|y절편).*(?:삼각형|넓이)|(?:y축|y절편).*(?:x축|x절편).*(?:삼각형|넓이)/.test(type)) {
+    return buildTemplateHint_('parabola_xintercepts_yintercept_triangle_area', 'parabola_xintercepts_yintercept_triangle', 'coordinate_plane', '포물선의 두 x축 교점을 A,B, y축 교점을 C로 두고 삼각형 ABC의 넓이 또는 좌표를 묻는다.', 'equation');
+  }
+
+  if (/(?:y축|y절편).*(?:꼭짓점|정점).*(?:원점|x축|삼각형|넓이)|(?:꼭짓점|정점).*(?:y축|y절편).*(?:원점|x축|삼각형|넓이)/.test(type)) {
+    return buildTemplateHint_('parabola_yintercept_vertex_xintercept_triangle_area', 'parabola_yintercept_vertex_xintercept_triangle', 'coordinate_plane', '포물선의 y축 교점, 꼭짓점, 한 x축 교점이 만드는 삼각형을 이용해 좌표나 넓이를 묻는다.', 'equation, x_intercept');
+  }
+
+  if (/(?:두|2).*이차함수.*(?:수직선|x=|둘러싸|넓이)|(?:수직선|x=).*(?:두|2).*이차함수.*(?:둘러싸|넓이)|(?:f\(x\)|g\(x\)).*(?:x=|수직선|넓이)/.test(type)) {
+    return buildTemplateHint_('two_parabolas_vertical_band_area', 'parabola_band_area', 'coordinate_plane', '두 이차함수와 두 수직선 x=a, x=b로 둘러싸인 영역의 넓이를 묻는다.', 'equation_top, equation_bottom, x_left, x_right');
+  }
+
+  if (/(?:원점|O).*(?:두|2).*이차함수.*(?:y=|수평선|직선).*(?:교점|PQ|QR|길이|비)|(?:수평선|직선y).*(?:두|2).*이차함수/.test(type)) {
+    return buildTemplateHint_('two_origin_parabolas_horizontal_line', 'two_origin_parabolas_horizontal_line', 'coordinate_plane', '원점을 지나는 두 포물선과 수평선 y=k의 교점을 이용해 길이, 비, 좌표를 묻는다.', 'equation1, equation2, horizontal_y');
+  }
+
+  if (/(?:원점|O).*(?:두|2).*이차함수.*(?:x=|수직선|직선).*(?:교점|비|길이)|(?:수직선|직선x).*(?:두|2).*이차함수/.test(type)) {
+    return buildTemplateHint_('two_origin_parabolas_vertical_line_ratio', 'two_origin_parabolas_vertical_line_ratio', 'coordinate_plane', '원점을 지나는 두 포물선과 수직선 x=a의 교점을 이용해 길이, 비, 좌표를 묻는다.', 'equation1, equation2, vertical_x');
+  }
+
+  if (/(?:두|2).*이차함수.*(?:사이|렌즈|잎사귀|둘러싸).*넓이|(?:사이|렌즈|잎사귀).*(?:두|2).*이차함수/.test(type)) {
+    return buildTemplateHint_('two_parabolas_between_area', 'two_parabolas_between_area', 'coordinate_plane', '두 포물선이 둘러싸는 렌즈형 영역의 넓이를 묻는다.', 'equation1, equation2');
+  }
+
+  if (/(?:원점|O).*(?:여러|계수|a).*이차함수|y=ax|포물선.*계수.*비교/.test(type)) {
+    return buildTemplateHint_('parabola_family_origin', 'parabola_family_origin', 'coordinate_plane', '원점을 공유하는 여러 포물선의 폭, 볼록 방향, 계수를 비교한다.', 'equations, curve_labels');
+  }
+
+  if (/(?:평행이동|축의방향|대칭이동).*(?:이차함수|포물선)|(?:이차함수|포물선).*(?:평행이동|축의방향|대칭이동)/.test(type)) {
+    return buildTemplateHint_('parabola_shift_or_axis_values', 'parabola_axis_values', 'coordinate_plane', '평행이동 또는 축의 방향 변화 후 꼭짓점, 절편, 식의 계수를 묻는다.', 'equation');
+  }
+
+  if (/(?:직선|일차함수).*(?:x절편|y절편|축과만나는점)|(?:x절편|y절편).*(?:직선|일차함수)/.test(type)) {
+    return buildTemplateHint_('linear_intercepts', 'linear_basic_intercepts', 'coordinate_plane', '일차함수의 x절편과 y절편 또는 축과 만나는 점을 묻는다.', 'equation');
+  }
+
+  if (/(?:직선|일차함수).*(?:보기|고르|알맞은|바르게)|(?:보기|고르|알맞은|바르게).*(?:직선|일차함수)/.test(type)) {
+    return buildTemplateHint_('multiple_choice_linear_graph', 'multiple_choice_linear_position', 'coordinate_plane', '1~5번 직선 보기 그래프 중 조건에 맞는 그래프를 고르게 한다.', 'choices');
+  }
+
+  if (/(?:도로|길|통로).*(?:직사각형|밭|땅|화단)|(?:직사각형|밭|땅|화단).*(?:도로|길|통로)/.test(type)) {
+    const slanted = /(?:비스듬|기울|대각|평행사변형|사선)/.test(type);
+    return buildTemplateHint_(slanted ? 'rectangle_slanted_road_area' : 'rectangle_cross_road_area', slanted ? 'rectangle_slanted_cross_road' : 'rectangle_cross_road', 'geometry', '직사각형 모양의 땅 또는 밭에 일정한 폭의 길/도로를 내고 남은 넓이나 길의 폭을 묻는다.', 'width, height, road_width');
+  }
+
+  if (/(?:공원|산책로|테두리|둘레길|가장자리).*(?:직사각형|가로|세로)|(?:직사각형|가로|세로).*(?:공원|산책로|테두리|둘레길|가장자리)/.test(type)) {
+    return buildTemplateHint_('rectangular_park_border_area', 'rectangular_park_border', 'geometry', '직사각형 공원 둘레에 일정한 폭의 산책로나 테두리를 만들고 넓이를 이용해 길이를 묻는다.', 'inner_width, inner_height, border_width');
+  }
+
+  if (/(?:정사각형|직사각형).*(?:종이|귀퉁이|상자|전개도|잘라).*부피|(?:상자|전개도|귀퉁이).*(?:정사각형|직사각형|종이)/.test(type)) {
+    const rectangular = /직사각형/.test(type);
+    return buildTemplateHint_('open_box_net', rectangular ? 'open_box_net_rectangular_paper' : 'open_box_net_equal_cuts', 'geometry', '종이의 네 귀퉁이에서 같은 크기의 정사각형을 잘라 뚜껑 없는 상자를 만들고 부피나 원래 길이를 묻는다.', rectangular ? 'paper_width, paper_height, cut_side' : 'paper_side, cut_side');
+  }
+
+  if (/(?:두|2).*정사각형|선분.*정사각형|정사각형.*두개|정사각형.*넓이의합/.test(type)) {
+    return buildTemplateHint_('two_squares_on_segment', 'two_squares_on_segment', 'geometry', '한 선분을 나누어 두 정사각형을 만들고 둘의 넓이 합이나 변의 길이를 묻는다.', 'total_length');
+  }
+
+  if (/(?:원|동심원|띠).*(?:반지름|넓이|색칠)|(?:반지름).*(?:늘|증가).*(?:원|넓이)/.test(type)) {
+    const increased = /(?:늘|증가)/.test(type);
+    return buildTemplateHint_('annulus_or_circle_area', increased ? 'annulus_radius_increase' : 'annulus_area', 'geometry', '원 또는 동심원의 색칠된 띠 영역을 이용해 반지름이나 넓이를 묻는다.', increased ? 'inner_radius, increase' : 'outer_radius, inner_radius');
+  }
+
+  return {};
+}
+
+function normalizeTemplateHintSource_(value) {
+  return String(value || '')
+    .replace(/\s+/g, '')
+    .replace(/[Ⅱ]/g, 'II')
+    .replace(/[Ⅰ]/g, 'I')
+    .trim();
+}
+
+function buildTemplateHint_(problemTemplateHint, imageTemplateHint, imageKind, instruction, requiredFields) {
+  return {
+    problemTemplateHint,
+    imageTemplateHint,
+    imageKind,
+    templateInstruction: instruction,
+    templateRequiredFields: requiredFields
+  };
 }
 
 function getImageKindForWeakType_(weakType) {
