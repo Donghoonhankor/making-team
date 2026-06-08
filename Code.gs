@@ -906,13 +906,10 @@ function generateSimilarProblemsWithPool_(targetSheetName, studentName, examName
     throwDefer_(targetSheetName + ' 시트의 문제생성기 키 풀에 사용 가능한 프로젝트 quota가 없습니다.');
   }
 
-  const chunks = chunkByMaxSize_(plan.items, 3);
-  if (chunks.length > availableKeys.length) {
-    throwDefer_(targetSheetName + ' 시트의 문제생성기 사용 가능 프로젝트가 부족합니다. 3문항/요청 병렬 생성을 위해 ' + chunks.length + '개가 필요합니다.');
-  }
+  const chunks = buildSimilarProblemRequestChunks_(plan.items);
 
   const requests = chunks.map((chunk, index) => {
-    const keyConfig = availableKeys[index];
+    const keyConfig = pickKeyForSimilarProblemRequest_(availableKeys, index);
     const prompt = buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, reportText, rulesByType, chunk);
     if (!isWithinQuota_(keyConfig, estimateRequestTokens_(prompt, [], keyConfig))) {
       throwDefer_(keyConfig.projectName + ' 프로젝트 quota가 부족하여 다음 트리거로 연기합니다.');
@@ -971,13 +968,13 @@ function requestSimilarProblemRetries_(targetSheetName, studentName, examName, w
   if (!retryItems.length) return [];
   const samplePrompt = buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, reportText, rulesByType, retryItems);
   const availableKeys = pickSimilarProblemSetKeys_(targetSheetName, estimateTokens_(samplePrompt), true);
-  const chunks = chunkByMaxSize_(retryItems, 3);
-  if (!availableKeys.length || chunks.length > availableKeys.length) {
+  const chunks = buildSimilarProblemRequestChunks_(retryItems);
+  if (!availableKeys.length) {
     throwDefer_(targetSheetName + ' 시트의 문제생성기 재시도에 사용 가능한 프로젝트 quota가 부족합니다.');
   }
 
   const requests = chunks.map((chunk, index) => {
-    const keyConfig = availableKeys[index];
+    const keyConfig = pickKeyForSimilarProblemRequest_(availableKeys, index);
     const prompt = buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, reportText, rulesByType, chunk);
     if (!isWithinQuota_(keyConfig, estimateRequestTokens_(prompt, [], keyConfig))) {
       throwDefer_(keyConfig.projectName + ' 프로젝트 quota가 부족하여 다음 트리거로 연기합니다.');
@@ -3364,6 +3361,36 @@ function chunkByMaxSize_(items, maxSize) {
     chunks.push(items.slice(i, i + size));
   }
   return chunks;
+}
+
+function buildSimilarProblemRequestChunks_(items) {
+  const generalItems = [];
+  const imageItems = [];
+  (items || []).forEach(item => {
+    if (item && item.imageRequired) {
+      imageItems.push(item);
+    } else {
+      generalItems.push(item);
+    }
+  });
+
+  return splitIntoChunkCount_(generalItems, 4)
+    .concat(splitIntoChunkCount_(imageItems, 2))
+    .filter(chunk => chunk.length > 0);
+}
+
+function splitIntoChunkCount_(items, chunkCount) {
+  const source = (items || []).slice();
+  if (!source.length) return [];
+  const count = Math.max(1, Math.min(Number(chunkCount || 1), source.length));
+  const size = Math.ceil(source.length / count);
+  return chunkByMaxSize_(source, size);
+}
+
+function pickKeyForSimilarProblemRequest_(availableKeys, requestIndex) {
+  const keys = availableKeys || [];
+  if (!keys.length) return null;
+  return keys[Number(requestIndex || 0) % keys.length];
 }
 
 function shuffle_(items) {
