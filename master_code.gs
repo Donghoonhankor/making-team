@@ -1328,6 +1328,8 @@ function hasUnresolvedEquationLetters_(value) {
 }
 
 function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, reportText, rulesByType, planItems) {
+  return buildCompactSimilarProblemsPrompt_(studentName, examName, wrongProblems, reportText, rulesByType, planItems);
+
   const curriculumLines = buildCurriculumPromptLines_(planItems);
   return [
     '너는 20년 경력의 베테랑 중고등학교 수학문제 출제자다.',
@@ -1504,6 +1506,140 @@ function buildCurriculumPromptLines_(planItems) {
     '- 문제은행의 상위 단원, 하위 단원, 문제 유형 수준을 벗어나지 말라.',
     '- 적분, 미분, 극한 유형이 아닌 문항에는 정적분, 미분, 도함수, 극한 같은 상위 도구를 새로 도입하지 말라.'
   ];
+}
+
+function buildCompactSimilarProblemsPrompt_(studentName, examName, wrongProblems, reportText, rulesByType, planItems) {
+  const hasImageItems = (planItems || []).some(item => item && item.imageRequired);
+  const compactPlan = compactSimilarProblemPlanItems_(planItems);
+  const compactWrongProblems = compactWrongProblemsForPlan_(wrongProblems, planItems);
+  const compactRules = filterRulesByPlanItems_(rulesByType, planItems);
+  const curriculumLines = buildCurriculumPromptLines_(planItems);
+  const lines = [
+    '너는 중고등학교 수학문제 출제자다.',
+    '학생명: ' + studentName,
+    '시험명: ' + examName,
+    '오답요약(JSON): ' + JSON.stringify(compactWrongProblems),
+    '유형규칙(JSON): ' + JSON.stringify(compactRules),
+    '문항계획(JSON): ' + JSON.stringify(compactPlan),
+    '보고서참고: ' + buildCompactReportReference_(reportText),
+    '',
+    '공통 규칙:'
+  ].concat(curriculumLines).concat([
+    '- 문항계획의 n, form, weak, diff, img, iTpl, fields, note를 그대로 따른다.',
+    '- n은 반드시 번호 값으로 그대로 사용한다. 호출 안에서 1,2,3으로 다시 매기지 않는다.',
+    '- 원문 문제를 복제하지 말고 약점유형과 풀이 전략만 유지한다.',
+    '- 수식은 반드시 [수식: ...] 형태로 쓰고, LaTeX/마크다운/코드블록은 쓰지 않는다.',
+    '- x^2 대신 x², sqrt 대신 √, frac 대신 3/4처럼 일반 텍스트 수식을 쓴다.',
+    '- 모든 문제, 정답, 해설은 한국어로 쓴다. 단 IMAGE_PROMPT 안의 key=value만 영어다.',
+    '- 정답:에는 최종 정답만, 해설:에는 최종 풀이만 쓴다.',
+    '- 자기검토, 초안 과정, 영어 메모, 오답목록 언급, "다시 계산", "제가", "만약" 같은 잡담은 절대 쓰지 않는다.',
+    '- form이 5지선다형이면 ①~⑤ 선택지를 모두 포함한다.',
+    '- form이 단답형이면 선택지를 쓰지 않고 최종 답을 요구한다.',
+    '- form이 서술형이면 선택지를 쓰지 않고 풀이 과정 서술 요구 문장을 포함한다.'
+  ]);
+
+  if (hasImageItems) {
+    lines.push.apply(lines, buildCompactImagePromptLines_(planItems));
+  } else {
+    lines.push('- img=false 문항에는 이미지 태그를 쓰지 않는다.');
+  }
+
+  return lines.concat([
+    '',
+    '반환 형식:',
+    '===문항_START===',
+    '번호: n',
+    '문제:',
+    '문항n. ...',
+    '정답:',
+    '정답 내용',
+    '해설:',
+    '해설 내용',
+    '===문항_END===',
+    '',
+    '위 형식만 문항 수만큼 반복한다. 앞뒤 설명은 금지.'
+  ]).join('\n');
+}
+
+function buildCompactImagePromptLines_(planItems) {
+  const templateLines = buildTemplateSpecificPromptLines_(planItems);
+  return [
+    '- img=true 문항은 문제 본문 시작 전에 [이미지 필요n: ...]와 [IMAGE_PROMPTn: ...] 두 태그를 반드시 함께 쓴다.',
+    '- 이미지 태그 번호 n은 문항 번호와 같아야 하며, IMAGE_PROMPT 첫 줄은 반드시 template=iTpl 값이다.',
+    '- IMAGE_PROMPT에는 fields에 적힌 필드를 모두 채운다. y=f(x), y=g(x), 미정계수, "given", "as shown", "문제 본문 참고"는 금지다.',
+    '- 함수 그래프 equation에는 실제 계산된 y=... 식만 쓴다. k, a, b, alpha, beta 같은 미정 문자는 남기지 않는다.',
+    '- 전용 템플릿은 점, 라벨, 색칠을 렌더러가 계산하므로 임의 points/labels/region을 넣지 않는다.',
+    '- 보기 그래프 템플릿 choices에는 실제 y=... 식 5개를 세미콜론(;)으로 구분한다.',
+    '- 한글 태그는 사람이 볼 검수용, 영어 IMAGE_PROMPT는 렌더러용이다. 둘의 식과 숫자는 일치해야 한다.'
+  ].concat(templateLines);
+}
+
+function buildTemplateSpecificPromptLines_(planItems) {
+  const hints = {};
+  (planItems || []).forEach(item => {
+    if (!item || !item.imageRequired || !item.imageTemplateHint) return;
+    hints[item.imageTemplateHint] = item.templateRequiredFields || '';
+  });
+
+  return Object.keys(hints).sort().map(template => {
+    const fields = hints[template];
+    return '- 이번 호출 사용 템플릿: ' + template + (fields ? ' / 필수필드: ' + fields : '');
+  });
+}
+
+function compactSimilarProblemPlanItems_(planItems) {
+  return (planItems || []).map(item => ({
+    n: item.number,
+    form: item.formType,
+    weak: item.weakType,
+    diff: item.difficulty,
+    level: item.curriculumLevel,
+    img: Boolean(item.imageRequired),
+    kind: item.imageRequired ? item.imageKind : '',
+    pTpl: item.problemTemplateHint || '',
+    iTpl: item.imageTemplateHint || '',
+    fields: item.templateRequiredFields || '',
+    note: item.templateInstruction || ''
+  }));
+}
+
+function compactWrongProblemsForPlan_(wrongProblems, planItems) {
+  const typeSet = {};
+  (planItems || []).forEach(item => {
+    const type = String(item && item.weakType || '').trim();
+    if (type) typeSet[type] = true;
+  });
+  return (wrongProblems || [])
+    .filter(problem => !Object.keys(typeSet).length || typeSet[String(problem.type || '').trim()])
+    .map(problem => ({
+      no: problem.problemNumber,
+      type: problem.type,
+      raw: problem.rawType,
+      unit1: problem.unit1,
+      unit2: problem.unit2,
+      answer: problem.answer
+    }));
+}
+
+function filterRulesByPlanItems_(rulesByType, planItems) {
+  const result = {};
+  const typeSet = {};
+  (planItems || []).forEach(item => {
+    const type = String(item && item.weakType || '').trim();
+    if (type) typeSet[type] = true;
+  });
+  Object.keys(typeSet).forEach(type => {
+    if (rulesByType && rulesByType[type]) {
+      result[type] = rulesByType[type];
+    }
+  });
+  return result;
+}
+
+function buildCompactReportReference_(reportText) {
+  const text = String(reportText || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '보고서 없음. 오답요약과 유형규칙만 참고한다.';
+  return text.slice(0, 700);
 }
 
 function getPlanItemsCurriculumLevel_(planItems) {
