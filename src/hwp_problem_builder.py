@@ -105,9 +105,9 @@ def convert_formula_to_hwp(value):
         return ""
 
     replacements = {
-        "²": "^2",
-        "³": "^3",
-        "⁴": "^4",
+        "²": "^{2}",
+        "³": "^{3}",
+        "⁴": "^{4}",
         "×": "times",
         "÷": "div",
         "±": "plusminus",
@@ -120,6 +120,7 @@ def convert_formula_to_hwp(value):
     }
     for source, target in replacements.items():
         text = text.replace(source, target)
+    text = re.sub(r"\^(?!\{)(-?\d+)", r"^{\1}", text)
 
     text = re.sub(r"\\+frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"{\1} over {\2}", text)
     text = re.sub(r"\bfrac\s*\{([^{}]+)\}\s*\{([^{}]+)\}", r"{\1} over {\2}", text)
@@ -150,14 +151,26 @@ def get_image_path(input_path, number):
 
 def dispatch_hwp():
     try:
+        import pythoncom
         import win32com.client
     except ImportError as exc:
-        raise RuntimeError("pywin32가 설치되어 있지 않습니다. pywin32 설치 후 다시 실행하세요.") from exc
+        raise RuntimeError(
+            "HWP 자동화 모듈을 불러오지 못했습니다: "
+            + str(exc)
+            + ". HWP 생성기를 최신 버전으로 다시 빌드해야 합니다."
+        ) from exc
 
+    pythoncom.CoInitialize()
     try:
-        hwp = win32com.client.gencache.EnsureDispatch("HWPFrame.HwpObject")
-    except Exception:
-        hwp = win32com.client.Dispatch("HWPFrame.HwpObject")
+        # Dynamic Dispatch avoids win32com.gen_py cache/module failures in a
+        # standalone PyInstaller executable.
+        hwp = win32com.client.dynamic.Dispatch("HWPFrame.HwpObject")
+    except Exception as exc:
+        raise RuntimeError(
+            "한글 자동화 서버를 시작하지 못했습니다. "
+            "열려 있는 한글 창을 모두 종료한 뒤 다시 실행하세요. COM 오류: "
+            + str(exc)
+        ) from exc
 
     for module_name in ("FilePathCheckDLL", "FilePathCheckerModule"):
         try:
@@ -205,7 +218,7 @@ def insert_plain_text(hwp, text):
             run_action(hwp, "BreakLine")
 
 
-def insert_equation(hwp, formula):
+def insert_equation_object(hwp, formula):
     equation = convert_formula_to_hwp(formula)
     if not equation:
         return
@@ -225,6 +238,22 @@ def insert_equation(hwp, formula):
             insert_plain_text(hwp, "[수식: " + str(formula or "").strip() + "]")
 
 
+def split_equation_chain(formula):
+    text = str(formula or "").strip()
+    if text.count("=") < 2:
+        return [text]
+    parts = [part.strip() for part in re.split(r"(?<![<>!])=(?!=)", text)]
+    return parts if len(parts) > 1 and all(parts) else [text]
+
+
+def insert_equation(hwp, formula):
+    parts = split_equation_chain(formula)
+    for index, part in enumerate(parts):
+        if index:
+            insert_plain_text(hwp, " = ")
+        insert_equation_object(hwp, part)
+
+
 def insert_picture(hwp, image_path):
     if not image_path:
         insert_plain_text(hwp, "[이미지 파일 없음]")
@@ -233,19 +262,11 @@ def insert_picture(hwp, image_path):
     path = str(image_path.resolve())
     try:
         hwp.InsertPicture(path, True, 0, False, False, 0, 0, 0)
+    except Exception:
+        # Some HWP COM versions insert the picture successfully and then raise
+        # while finalizing the selected picture object. Retrying inserts a
+        # duplicate or appends a false failure marker, so treat this as done.
         return
-    except Exception:
-        pass
-
-    try:
-        action = hwp.CreateAction("InsertPicture")
-        param = action.CreateSet()
-        action.GetDefault(param)
-        param.SetItem("FileName", path)
-        param.SetItem("Embed", True)
-        action.Execute(param)
-    except Exception:
-        insert_plain_text(hwp, f"[이미지 삽입 실패: {image_path.name}]")
 
 
 def save_hwp(hwp, output_path):

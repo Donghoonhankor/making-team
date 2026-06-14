@@ -1,12 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+hiddenimports = [
+    'pythoncom',
+    'pywintypes',
+    'win32com.client',
+    'win32com.client.dynamic',
+]
 
 a = Analysis(
-    ['math_diagram_renderer.py'],
+    ['hwp_problem_builder.py'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -22,7 +28,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='MathDiagramRenderer',
+    name='HWP문항생성기',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

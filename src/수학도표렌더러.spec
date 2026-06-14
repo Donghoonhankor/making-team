@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['hwp_problem_builder.py'],
+    ['math_diagram_renderer.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='HWPProblemBuilder',
+    name='수학도표렌더러',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

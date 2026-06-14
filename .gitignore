@@ -1,26 +1,7 @@
-# Python / build artifacts
-__pycache__/
 build/
 dist/
-*.spec~
-
-# Generated diagram outputs and scratch folders
-*_out/
-image_prompt_test*/
-rendered_math_images*/
-renderer_*_test/
-exe_*_test/
-small_size_test/
-quarter_size_test_out/
-numbered_prompt_out/
-
-# Generated local samples
-*_이미지*.PNG
+__pycache__/
+*.pyc
 *.hwp
-
-# Local matplotlib cache
-.mplconfig/
-
-# Archives
-*.zip
-
+*.pdf
+*_이미지*.PNG
