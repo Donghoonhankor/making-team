@@ -2165,9 +2165,9 @@ def render_linear_two_lines_labeled_points(spec, output_path):
         ax.plot(xs, [line_y(line, x) for x in xs], color="black", lw=lw(1.4), zorder=3)
 
     offsets = {
-        "A(a, b)": (-10, 8, "right", "bottom"),
-        "B(s, t)": (-10, -8, "right", "top"),
-        "C(m, n)": (10, 8, "left", "bottom"),
+        "A(a, b)": (8, 8, "left", "bottom"),
+        "B(s, t)": (-8, -8, "right", "top"),
+        "C(m, n)": (-8, -8, "right", "top"),
     }
     for point in points:
         ax.scatter([point["x"]], [point["y"]], color="#6f50b5", s=marker_area(22), zorder=6)
