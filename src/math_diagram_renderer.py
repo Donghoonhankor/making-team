@@ -13,11 +13,12 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "math_di
 
 import matplotlib
 from matplotlib.patches import Wedge
-from matplotlib.font_manager import FontProperties
+from matplotlib.font_manager import FontProperties, fontManager
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
 
 
 FIGURE_SIZE_INCHES = (1.8, 1.3)  # 720 x 520 px at 400 dpi; quarter-size in HWP/print layout.
@@ -27,6 +28,107 @@ OUTPUT_DPI = 400
 STYLE_SCALE = 200 / OUTPUT_DPI
 KOREAN_FONT_PATH = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "malgun.ttf"
 KOREAN_FONT = FontProperties(fname=str(KOREAN_FONT_PATH)) if KOREAN_FONT_PATH.exists() else None
+
+
+def select_math_font():
+    installed = {font.name for font in fontManager.ttflist}
+    for family in (
+        "Cambria Math",
+        "Latin Modern Math",
+        "STIX Two Math",
+        "Times New Roman",
+    ):
+        if family in installed:
+            return family
+    return matplotlib.rcParams.get("font.family", ["sans-serif"])[0]
+
+
+MATH_FONT_FAMILY = select_math_font()
+matplotlib.rcParams.update(
+    {
+        "mathtext.fontset": "custom",
+        "mathtext.rm": MATH_FONT_FAMILY,
+        "mathtext.it": f"{MATH_FONT_FAMILY}:italic",
+        "mathtext.bf": MATH_FONT_FAMILY,
+        "mathtext.default": "it",
+    }
+)
+
+_ORIGINAL_AXES_TEXT = Axes.text
+_ORIGINAL_AXES_ANNOTATE = Axes.annotate
+_HANGUL_RE = re.compile(r"[가-힣]")
+_MATH_SIGNAL_RE = re.compile(
+    r"[A-Za-zθπ∠]|(?:\d|\))\s*[,=+\-*/^]|[=+\-*/^]\s*(?:\d|\()"
+)
+_MIXED_MATH_RE = re.compile(
+    r"(?<![A-Za-z가-힣])"
+    r"(∠?[A-Za-zθπ](?:\s*\([^()\n]*\))?"
+    r"(?:\s*(?:=|[+\-*/^])\s*[A-Za-z0-9θπ().,+\-*/^]+)*)"
+)
+
+
+def _mathtext_body(value):
+    text = str(value)
+    text = text.replace("−", "-")
+    text = text.replace("²", "^{2}").replace("³", "^{3}").replace("⁴", "^{4}")
+    text = re.sub(r"\*\*(\d+)", r"^{\1}", text)
+    text = re.sub(r"\^(\-?\d+)", r"^{\1}", text)
+    text = text.replace("∠", r"\angle ")
+    text = text.replace("θ", r"\theta ").replace("π", r"\pi ")
+    text = text.replace("×", r"\times ").replace("÷", r"\div ")
+    text = re.sub(r"([A-Za-z])([₀₁₂₃₄₅₆₇₈₉]+)", _unicode_subscript_repl, text)
+    text = re.sub(r"(?:kcal|cm|mm|km)(?![A-Za-z])", _unit_repl, text)
+    return text
+
+
+def _unicode_subscript_repl(match):
+    table = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
+    return f"{match.group(1)}_{{{match.group(2).translate(table)}}}"
+
+
+def _unit_repl(match):
+    return r"\mathrm{" + match.group(0) + "}"
+
+
+def format_math_text(value):
+    if not isinstance(value, str) or not value or "$" in value:
+        return value
+    if not _MATH_SIGNAL_RE.search(value):
+        return value
+
+    leading = value[: len(value) - len(value.lstrip())]
+    trailing = value[len(value.rstrip()) :]
+    core = value.strip()
+    if not core:
+        return value
+
+    if not _HANGUL_RE.search(core):
+        return leading + "$" + _mathtext_body(core) + "$" + trailing
+
+    def replace_mixed(match):
+        return "$" + _mathtext_body(match.group(1)) + "$"
+
+    return _MIXED_MATH_RE.sub(replace_mixed, value)
+
+
+def math_styled_text(self, x, y, s, *args, **kwargs):
+    formatted = format_math_text(s)
+    if isinstance(formatted, str) and "$" in formatted:
+        kwargs.setdefault("math_fontfamily", "stix")
+    return _ORIGINAL_AXES_TEXT(self, x, y, formatted, *args, **kwargs)
+
+
+def math_styled_annotate(self, text, *args, **kwargs):
+    formatted = format_math_text(text)
+    if isinstance(formatted, str) and "$" in formatted:
+        kwargs.setdefault("math_fontfamily", "stix")
+    return _ORIGINAL_AXES_ANNOTATE(
+        self, formatted, *args, **kwargs
+    )
+
+
+Axes.text = math_styled_text
+Axes.annotate = math_styled_annotate
 
 
 SAFE_FUNCS = {
@@ -55,14 +157,39 @@ def marker_area(value):
 
 def extract_image_prompt_blocks(text):
     blocks = []
-    pattern = re.compile(r"\[IMAGE_PROMPT\s*(\d*)\s*:", re.MULTILINE)
+    pattern = re.compile(r"(?m)(\[)?IMAGE_PROMPT\s*(?:\((\d+)\)|(\d+))?\s*:")
     search_from = 0
     while True:
         match = pattern.search(text, search_from)
         if not match:
             break
-        depth = 1
+        has_bracket = bool(match.group(1))
         cursor = match.end()
+        if not has_bracket:
+            lines = []
+            line_start = cursor
+            while line_start < len(text):
+                line_end = text.find("\n", line_start)
+                if line_end < 0:
+                    line_end = len(text)
+                line = text[line_start:line_end]
+                stripped = line.strip()
+                if not stripped:
+                    if lines:
+                        break
+                    line_start = line_end + 1
+                    continue
+                if not re.match(r"^[A-Za-z0-9_가-힣]+\s*=", stripped):
+                    break
+                lines.append(line)
+                line_start = line_end + 1
+            if lines:
+                tag_number = int(match.group(2) or match.group(3)) if (match.group(2) or match.group(3)) else len(blocks) + 1
+                blocks.append((tag_number, "\n".join(lines).strip()))
+            search_from = max(line_start, match.end())
+            continue
+
+        depth = 1
         quote = ""
         escaped = False
         while cursor < len(text):
@@ -85,7 +212,7 @@ def extract_image_prompt_blocks(text):
             cursor += 1
         if depth != 0:
             break
-        tag_number = int(match.group(1)) if match.group(1) else len(blocks) + 1
+        tag_number = int(match.group(2) or match.group(3)) if (match.group(2) or match.group(3)) else len(blocks) + 1
         blocks.append((tag_number, text[match.end():cursor].strip()))
         search_from = cursor + 1
     return blocks
@@ -380,12 +507,21 @@ def setup_axes(ax, x_range, y_range):
     )
     if ymin <= 0 <= ymax:
         ax.annotate("", xy=(xmax, 0), xytext=(xmin, 0), arrowprops=axis_arrow, zorder=3)
-        ax.text(xmax, 0, "  x", ha="left", va="center", fontsize=fs(10), clip_on=False)
+        ax.text(
+            xmax, 0, r"  $x$", ha="left", va="center", fontsize=fs(10),
+            math_fontfamily="stix", clip_on=False
+        )
     if xmin <= 0 <= xmax:
         ax.annotate("", xy=(0, ymax), xytext=(0, ymin), arrowprops=axis_arrow, zorder=3)
-        ax.text(0, ymax, "y", ha="center", va="bottom", fontsize=fs(10), clip_on=False)
+        ax.text(
+            0, ymax, r"$y$", ha="center", va="bottom", fontsize=fs(10),
+            math_fontfamily="stix", clip_on=False
+        )
     if xmin <= 0 <= xmax and ymin <= 0 <= ymax:
-        ax.text(0, 0, " O", ha="left", va="top", fontsize=fs(10), zorder=6)
+        ax.text(
+            0, 0, r" $O$", ha="left", va="top", fontsize=fs(10),
+            math_fontfamily="stix", zorder=6
+        )
 
     ax.grid(False)
     ax.set_aspect("auto")
@@ -404,12 +540,21 @@ def redraw_axes_in_front(ax, x_range, y_range):
     )
     if ymin <= 0 <= ymax:
         ax.annotate("", xy=(xmax, 0), xytext=(xmin, 0), arrowprops=axis_arrow, zorder=20)
-        ax.text(xmax, 0, "  x", ha="left", va="center", fontsize=fs(10), clip_on=False, zorder=21)
+        ax.text(
+            xmax, 0, r"  $x$", ha="left", va="center", fontsize=fs(10),
+            math_fontfamily="stix", clip_on=False, zorder=21
+        )
     if xmin <= 0 <= xmax:
         ax.annotate("", xy=(0, ymax), xytext=(0, ymin), arrowprops=axis_arrow, zorder=20)
-        ax.text(0, ymax, "y", ha="center", va="bottom", fontsize=fs(10), clip_on=False, zorder=21)
+        ax.text(
+            0, ymax, r"$y$", ha="center", va="bottom", fontsize=fs(10),
+            math_fontfamily="stix", clip_on=False, zorder=21
+        )
     if xmin <= 0 <= xmax and ymin <= 0 <= ymax:
-        ax.text(0, 0, " O", ha="left", va="top", fontsize=fs(10), zorder=21)
+        ax.text(
+            0, 0, r" $O$", ha="left", va="top", fontsize=fs(10),
+            math_fontfamily="stix", zorder=21
+        )
 
 
 def setup_choice_axes(ax, x_range, y_range):
@@ -434,12 +579,21 @@ def setup_choice_axes(ax, x_range, y_range):
     )
     if ymin <= 0 <= ymax:
         ax.annotate("", xy=(xmax, 0), xytext=(xmin, 0), arrowprops=axis_arrow, zorder=3)
-        ax.text(xmax, 0, " x", ha="left", va="center", fontsize=fs(7), clip_on=False)
+        ax.text(
+            xmax, 0, r" $x$", ha="left", va="center", fontsize=fs(7),
+            math_fontfamily="stix", clip_on=False
+        )
     if xmin <= 0 <= xmax:
         ax.annotate("", xy=(0, ymax), xytext=(0, ymin), arrowprops=axis_arrow, zorder=3)
-        ax.text(0, ymax, "y", ha="center", va="bottom", fontsize=fs(7), clip_on=False)
+        ax.text(
+            0, ymax, r"$y$", ha="center", va="bottom", fontsize=fs(7),
+            math_fontfamily="stix", clip_on=False
+        )
     if xmin <= 0 <= xmax and ymin <= 0 <= ymax:
-        ax.text(0, 0, " O", ha="left", va="top", fontsize=fs(7), zorder=6)
+        ax.text(
+            0, 0, r" $O$", ha="left", va="top", fontsize=fs(7),
+            math_fontfamily="stix", zorder=6
+        )
 
     ax.grid(False)
     ax.set_aspect("auto")
@@ -1407,8 +1561,21 @@ def render_two_parabolas_axis_aligned_square(spec, output_path):
 
 
 def render_two_parabolas_shared_vertex_intersections(spec, output_path):
-    eq1 = parse_y_equation(spec.get("equation1") or "y=x^2-9")
-    eq2 = parse_y_equation(spec.get("equation2") or "y=-(x-3)^2")
+    eq1_raw = str(spec.get("equation1") or "")
+    eq2_raw = str(spec.get("equation2") or "")
+    if re.search(r"\ba\b", eq1_raw) and re.search(r"\bp\b", eq1_raw):
+        try:
+            eq2_probe = parse_y_equation(eq2_raw or "y=-x^2+4")
+            c2 = quadratic_coefficients(eq2_probe)
+            vertex2 = quadratic_vertex(c2)
+            if abs(vertex2[0]) < 1e-9 and vertex2[1] > 0:
+                p_value = math.sqrt(vertex2[1] / abs(c2[0]))
+                a_value = vertex2[1] / (p_value ** 2)
+                eq1_raw = f"y={a_value}*(x-{p_value})^2"
+        except Exception:
+            pass
+    eq1 = parse_y_equation(eq1_raw or "y=x^2-9")
+    eq2 = parse_y_equation(eq2_raw or "y=-(x-3)^2")
     coeff1 = quadratic_coefficients(eq1)
     coeff2 = quadratic_coefficients(eq2)
     roots = quadratic_roots_from_coeffs(coeff1[0] - coeff2[0], coeff1[1] - coeff2[1], coeff1[2] - coeff2[2])

@@ -8,7 +8,7 @@ hiddenimports = [
 ]
 
 a = Analysis(
-    ['hwp_problem_builder.py'],
+    ['hwp_problem_builder_work.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -28,7 +28,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='HWP문항생성기',
+    name='HWPProblemBuilder',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
