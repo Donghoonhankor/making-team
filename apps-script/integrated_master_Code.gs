@@ -53,7 +53,7 @@ const RESERVED_SHEETS = [
 ];
 
 const HEADERS = {
-  PROBLEM_BANK: ['시험지 이름', '문제번호', '링크', '상위 단원', '하위 단원', '문제 유형', '표준 문제 유형', '문제본문', '정답', '풀이요약', '이미지포함여부', '이미지설명', '이미지템플릿', '이미지필수항목', '이미지템플릿근거', '신뢰도', '검산메모', '처리상태', '오류메시지', '마지막처리시간'],
+  PROBLEM_BANK: ['시험지 이름', '문제번호', '링크', '상위 단원', '하위 단원', '문제 유형', '표준 문제 유형', '문항형식', '문제본문', '정답', '풀이요약', '이미지포함여부', '이미지설명', '이미지템플릿', '이미지필수항목', '이미지템플릿근거', '신뢰도', '검산메모', '처리상태', '오류메시지', '마지막처리시간'],
   TEACHER: ['학생 이름', '시험지 이름', '틀린 문제 번호', '분석 보고서', '쌍둥이 문항', '누적 분석 보고서', '처리상태', '오류메시지'],
   QUEUE: ['작업ID', '작업종류', '대상시트', '대상행', '상태', '재시도횟수', '예약시각', '오류메시지', '생성시간', '처리시간', '페이로드JSON'],
   ADMIN: ['기능', '적용시트', '프로젝트명', 'API키', 'RPM', 'TPM', 'RPD', '모델명', '1회처리개수', '요청간대기ms', '첨부토큰보정값', '출력토큰보정값', 'Drive루트폴더ID', '사용여부'],
@@ -638,7 +638,7 @@ function handleProblemAnalysis_(payload) {
   const prompt = [
     '너는 중고등학교 수학 시험지를 정확하게 풀이하고 검산하는 베테랑 수학교사다.',
     '첨부된 한 페이지에서 다음 문제번호만 분석하라: ' + numbers,
-    '각 문제에 대해 반드시 문제를 끝까지 풀고, 정답을 검산한 뒤 문제본문, 문제 유형, 상위 단원, 하위 단원, 정답을 작성하라.',
+    '각 문제에 대해 반드시 문제를 끝까지 풀고, 정답을 검산한 뒤 문제본문, 문제 유형, 상위 단원, 하위 단원, 문항형식, 정답을 작성하라.',
     '정답을 추측하지 말라. 풀이 근거가 부족하거나 이미지 판독이 불확실하면 confidence를 MEDIUM 또는 LOW로 낮추고 reviewReason에 이유를 적어라.',
     '도형, 그래프, 길이, 넓이, 각도, 단위(cm, m 등), 분수/무리수 답은 특히 조건을 다시 확인하고 검산하라.',
     '문제에서 요구하는 단위와 답 형식에 맞게 최종 정답을 정리하라.',
@@ -647,12 +647,13 @@ function handleProblemAnalysis_(payload) {
     'confidence는 HIGH, MEDIUM, LOW 중 하나만 사용하라.',
     'reviewReason은 사람이 확인해야 할 이유가 있을 때만 적고, 확실하면 빈 문자열로 둔다.',
     'problemText에는 보기, 조건, 소문항을 포함한 원문 문제를 평문으로 정확히 옮겨라.',
+    'formType은 원문 문항형식에 맞춰 5지선다형, 단답형, 서술형 중 하나만 작성하라. ①~⑤ 선택지가 있으면 5지선다형, 풀이과정·이유 서술을 요구하면 서술형, 그 외 직접 답만 쓰는 문제는 단답형이다.',
     '도형, 그래프, 좌표평면, 표가 있으면 hasImage를 true로 하고 imageDescription에 구조를 상세히 적어라.',
     'imageDescription에는 함수 식, 점의 위치와 관계, 선분 연결, 도형 종류, 축과의 관계를 포함하되 템플릿 이름은 추측하지 마라.',
     '이미지가 없으면 hasImage는 false, imageDescription은 빈 문자열로 작성하라.',
     '반드시 JSON 배열만 반환하라. 설명, 마크다운, 코드블록은 금지.',
-    '형식: [{"problemNumber":"1","problemText":"문제 원문","type":"삼각형의 닮음과 길이","unit1":"도형","unit2":"닮음","answer":"9cm","solutionSummary":"닮음비를 이용해 대응변의 길이를 구하고 단위를 확인하면 9cm이다.","hasImage":true,"imageDescription":"삼각형 ABC와 내부 선분 DE의 점·선·길이 관계","confidence":"HIGH","reviewReason":""}]',
-    '문제를 찾을 수 없으면 problemText, type, unit1, unit2, answer, solutionSummary, imageDescription을 빈 문자열로 두고 hasImage는 false, confidence는 LOW, reviewReason은 "문제를 찾지 못함"으로 둔다.',
+    '형식: [{"problemNumber":"1","problemText":"문제 원문","type":"삼각형의 닮음과 길이","unit1":"도형","unit2":"닮음","formType":"단답형","answer":"9cm","solutionSummary":"닮음비를 이용해 대응변의 길이를 구하고 단위를 확인하면 9cm이다.","hasImage":true,"imageDescription":"삼각형 ABC와 내부 선분 DE의 점·선·길이 관계","confidence":"HIGH","reviewReason":""}]',
+    '문제를 찾을 수 없으면 problemText, type, unit1, unit2, formType, answer, solutionSummary, imageDescription을 빈 문자열로 두고 hasImage는 false, confidence는 LOW, reviewReason은 "문제를 찾지 못함"으로 둔다.',
     '분류 기준:',
     '- unit1은 큰 단원명으로 짧게 적어라. 예: 함수, 방정식, 도형, 수와 식',
     '- unit2는 교과서 소단원명으로 적어라. 예: 일차함수와 그래프, 연립일차방정식, 이차함수, 원의 넓이',
@@ -708,6 +709,7 @@ function handleProblemAnalysis_(payload) {
     if (result.unit2) updates['하위 단원'] = result.unit2;
     if (problemText) updates['문제본문'] = problemText;
     if (result.type) updates['표준 문제 유형'] = getStandardType_(result.type, result.unit1, result.unit2);
+    updates['문항형식'] = normalizeProblemFormType_(result.formType) || inferProblemFormType_(problemText);
     if (result.answer) updates['정답'] = result.answer;
     if (result.solutionSummary) updates['풀이요약'] = result.solutionSummary;
     updates['이미지포함여부'] = hasImage ? 'TRUE' : 'FALSE';
@@ -1527,7 +1529,20 @@ function getGeneratedProblemMathConventionIssue_(generatedItem) {
   }
   const squareRoleIssue = getAxisAlignedSquareBodySolutionIssue_(problemText, solutionText);
   if (squareRoleIssue) return squareRoleIssue;
+  const decimalChoiceIssue = getDecimalChoiceFormatIssue_(problemText);
+  if (decimalChoiceIssue) return decimalChoiceIssue;
   return '';
+}
+
+function getDecimalChoiceFormatIssue_(problemText) {
+  const text = String(problemText || '');
+  if (/삼각비|근삿값|소수|반올림|표/.test(text)) return '';
+  const choiceLines = text
+    .split(/\n/)
+    .map(line => line.trim())
+    .filter(line => /^[①②③④⑤]/.test(line));
+  const hasDecimalChoice = choiceLines.some(line => /[-+]?\d+\.\d+/.test(line));
+  return hasDecimalChoice ? '선택지의 유리수 값은 소수가 아니라 기약분수 꼴로 작성해야 합니다.' : '';
 }
 
 function getAxisAlignedSquareBodySolutionIssue_(problemText, solutionText) {
@@ -2030,6 +2045,7 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     types: group.types,
     unit1: group.unit1,
     unit2: group.unit2,
+    formType: group.formType,
     problemText: group.sourceProblemText,
     answers: group.answers,
     hasImage: group.hasImage,
@@ -2042,10 +2058,13 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     getStandardProblemNumberingPromptRules_().join('\n'),
     '- Multiple-choice options must be meaningfully different. Do not repeat the same first tuple component, same expression, or same common value in all five options; move common values into the problem statement and vary only discriminating values.',
     '- 반드시 문항 계획의 약점유형, 생성유형, 문항번호, 난이도를 그대로 따른다.',
+    '- 쌍둥이문항은 원본문항의 문항형식을 유지한다. 원본이 5지선다형이면 5지선다형, 단답형이면 단답형, 서술형이면 서술형으로만 만든다.',
     '- sourceProblemNumbers가 같은 기본 문제번호의 소문항들은 하나의 원본문항 묶음이다.',
     '- 소문항 묶음은 각각 별도 문제로 분리하지 말고, 원본과 같은 개수의 (1), (2), (3) 소문항을 포함하는 쌍둥이문항 한 세트로 작성하라.',
     '- 문항 계획의 sourceSubproblemCount가 2 이상이면 생성 결과 한 문항 안에 정확히 그 수만큼의 소문항과 각 소문항의 정답·해설을 함께 작성하라.',
     '- 생성유형이 5지선다형이면 반드시 ①~⑤ 선택지를 정확히 5개 작성하라. 단답형과 서술형에는 ①~⑤ 선택지를 쓰지 마라.',
+    '- 단답형이나 서술형 문제를 만들고 생성유형을 5지선다형처럼 보이게 하지 마라. 5지선다형에는 반드시 의미 있게 다른 선택지 5개가 있어야 한다.',
+    '- 선택지와 정답의 유리수는 소수로 쓰지 말고 기약분수 a/b 꼴로 작성하라. 원문이 소수 근삿값을 요구하는 삼각비표 문제처럼 명시된 경우에만 소수를 허용한다.',
     '- sourceSubproblemCount가 2 이상인 5지선다형은 각 소문항을 따로 묻고 숫자 하나만 고르게 하지 마라. 모든 소문항의 답을 순서대로 나열한 순서쌍 또는 답의 묶음 5개를 제시하고, 그중 옳게 짝지어진 것을 고르게 하라.',
     '- "계수 -1을 p로 잘못 보았다"는 원래 항 -y의 계수 -1 전체를 p로 바꿨다는 뜻이므로 잘못 본 항은 +py이다. -py로 쓰지 마라. 일반적으로 부호를 포함한 원래 계수 전체를 새 문자로 치환하라.',
     '- 문항 계획의 imageRequired가 true인 문항만 이미지 문항으로 만들고, [이미지 필요]와 IMAGE_PROMPT를 모두 출력하라.',
@@ -2089,9 +2108,9 @@ function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, repor
     '- 계산 중 문제나 선택지를 바꿔야 한다고 판단해도 그 과정은 출력하지 말고 내부에서 처음부터 다시 작성하라.',
     '- "다시 풀이", "다시 확인", "숫자를 조정", "원래 오답", "수정된 선택지", "죄송합니다" 같은 문장이 한 글자라도 포함되면 응답은 폐기된다.',
     '- 최종 문제 본문에 나온 모든 수치와 식은 정답 및 해설에서 끝까지 동일해야 한다.',
-    '- 해설은 핵심 식과 결론만 최대 6줄로 작성하라. 문제 조건을 다시 길게 설명하지 마라.',
+    '- 해설은 핵심 식과 결론만 최대 4줄로 작성하라. 문제 조건을 다시 길게 설명하지 마라.',
     '- 풀이 단계 번호, 같은 계산의 반복, 검산 과정, 선택지별 오답 설명은 쓰지 마라.',
-    '- 5지선다형과 단답형은 가능하면 2~4줄, 서술형도 6줄 이내로 끝내라.',
+    '- 5지선다형과 단답형은 가능하면 2~3줄, 서술형도 4줄 이내로 끝내라.',
     '- 첫 글자는 반드시 ===문항_START=== 여야 하며, 그 앞에 어떤 문장도 쓰지 말라.',
     '- 각 문항은 반드시 ===문항_START=== 로 시작하고 ===문항_END=== 로 끝낸다.',
     '- 번호 값은 반드시 문항 계획의 number를 그대로 사용하라.',
@@ -2123,28 +2142,27 @@ function buildTwinGenerationPlan_(wrongProblems, teacherScope, rulesByType) {
   const sourceGroups = groupTwinWrongProblems_(wrongProblems);
   const groupKeys = sourceGroups.map(group => group.baseProblemNumber);
   const weakTypes = unique_(sourceGroups.reduce((types, group) => types.concat(group.types), []));
-  const totalCount = getTwinProblemTotalCount_(sourceGroups.length);
-  const countByGroup = distributeCounts_(totalCount, groupKeys);
+  const countByGroup = distributeTwinCountsByWeakType_(sourceGroups, 2);
+  const totalCount = groupKeys.reduce((sum, key) => sum + Number(countByGroup[key] || 0), 0);
   const formOrder = ['5지선다형', '단답형', '서술형'];
   const itemsWithoutNumber = [];
 
   sourceGroups.forEach(group => {
-    const formCounts = distributeCounts_(countByGroup[group.baseProblemNumber], formOrder);
-    formOrder.forEach(form => {
-      for (let i = 0; i < formCounts[form]; i++) {
-        itemsWithoutNumber.push({
-          sourceGroupKey: group.baseProblemNumber,
-          sourceProblemNumber: group.baseProblemNumber,
-          sourceProblemNumbers: group.sourceProblemNumbers,
-          sourceSubproblemCount: group.subproblemCount,
-          sourceProblemText: group.sourceProblemText,
-          sourceAnswers: group.answers,
-          sourceTypes: group.types,
-          weakType: group.types.join(' / '),
-          formType: form
-        });
-      }
-    });
+    const count = Number(countByGroup[group.baseProblemNumber] || 0);
+    const form = group.formType || '단답형';
+    for (let i = 0; i < count; i++) {
+      itemsWithoutNumber.push({
+        sourceGroupKey: group.baseProblemNumber,
+        sourceProblemNumber: group.baseProblemNumber,
+        sourceProblemNumbers: group.sourceProblemNumbers,
+        sourceSubproblemCount: group.subproblemCount,
+        sourceProblemText: group.sourceProblemText,
+        sourceAnswers: group.answers,
+        sourceTypes: group.types,
+        weakType: group.types.join(' / '),
+        formType: form
+      });
+    }
   });
 
   const numbered = [];
@@ -2236,12 +2254,40 @@ function buildTwinGenerationPlan_(wrongProblems, teacherScope, rulesByType) {
       baseProblemNumber: group.baseProblemNumber,
       sourceProblemNumbers: group.sourceProblemNumbers,
       subproblemCount: group.subproblemCount,
-      types: group.types
+      types: group.types,
+      formType: group.formType
     })),
     countByType: countByGroup,
     countBySourceGroup: countByGroup,
     items: numbered
   };
+}
+
+function distributeTwinCountsByWeakType_(sourceGroups, maxPerType) {
+  const result = {};
+  const groupsByType = {};
+  (sourceGroups || []).forEach(group => {
+    const groupKey = group.baseProblemNumber;
+    const typeKey = getTwinGroupWeakTypeKey_(group);
+    result[groupKey] = 0;
+    if (!groupsByType[typeKey]) groupsByType[typeKey] = [];
+    groupsByType[typeKey].push(group);
+  });
+
+  Object.keys(groupsByType).forEach(typeKey => {
+    const groups = groupsByType[typeKey];
+    const count = Math.max(1, Number(maxPerType || 1));
+    for (let index = 0; index < count; index++) {
+      const group = groups[index % groups.length];
+      result[group.baseProblemNumber] += 1;
+    }
+  });
+  return result;
+}
+
+function getTwinGroupWeakTypeKey_(group) {
+  const types = group && group.types || [];
+  return types.length ? types.slice().sort().join(' / ') : String(group && group.baseProblemNumber || '');
 }
 
 function groupTwinWrongProblems_(wrongProblems) {
@@ -2259,6 +2305,7 @@ function groupTwinWrongProblems_(wrongProblems) {
         problems: [],
         sourceProblemNumbers: [],
         types: [],
+        formTypes: [],
         answers: [],
         unit1: String(problem.unit1 || ''),
         unit2: String(problem.unit2 || ''),
@@ -2271,6 +2318,7 @@ function groupTwinWrongProblems_(wrongProblems) {
     group.problems.push(problem);
     group.sourceProblemNumbers.push(problem.problemNumber);
     if (problem.type && group.types.indexOf(problem.type) < 0) group.types.push(problem.type);
+    if (problem.formType && group.formTypes.indexOf(problem.formType) < 0) group.formTypes.push(problem.formType);
     if (problem.answer) {
       group.answers.push({
         problemNumber: problem.problemNumber,
@@ -2307,8 +2355,17 @@ function groupTwinWrongProblems_(wrongProblems) {
           );
         });
       group.sourceProblemText = textParts.join('\n\n');
+      group.formType = pickTwinGroupFormType_(group);
       return group;
     });
+}
+
+function pickTwinGroupFormType_(group) {
+  const formTypes = group && group.formTypes || [];
+  if (formTypes.indexOf('5지선다형') !== -1) return '5지선다형';
+  if (formTypes.indexOf('서술형') !== -1) return '서술형';
+  if (formTypes.indexOf('단답형') !== -1) return '단답형';
+  return inferProblemFormType_(group && group.sourceProblemText || '') || '단답형';
 }
 
 function chunkTwinPlanItems_(items, maxSize) {
@@ -2415,15 +2472,17 @@ function lookupWrongProblems_(examName, wrongNumbersText) {
 
 function buildWrongProblemFromBankRow_(problemNumber, row) {
   const exactNumber = normalizeProblemNumber_(problemNumber);
+  const problemText = String(row['문제본문'] || '').trim();
   return {
     problemNumber: exactNumber,
     sourceProblemNumber: normalizeProblemNumber_(row['문제번호']),
     imageGroupKey: getBaseProblemNumber_(exactNumber),
     rawType: String(row['문제 유형'] || '').trim(),
     type: String(row['표준 문제 유형'] || row['문제 유형'] || '').trim(),
+    formType: normalizeProblemFormType_(row['문항형식']) || inferProblemFormType_(problemText),
     unit1: String(row['상위 단원'] || '').trim(),
     unit2: String(row['하위 단원'] || '').trim(),
-    problemText: String(row['문제본문'] || '').trim(),
+    problemText,
     answer: String(row['정답'] || '').trim(),
     sourceLink: String(row['링크'] || '').trim(),
     hasImage: String(row['이미지포함여부'] || '').trim().toUpperCase() === 'TRUE',
@@ -2435,6 +2494,23 @@ function buildWrongProblemFromBankRow_(problemNumber, row) {
         }
       : null
   };
+}
+
+function normalizeProblemFormType_(value) {
+  const text = String(value || '').replace(/\s+/g, '');
+  if (!text) return '';
+  if (/5|오지|객관|선다|선택/.test(text)) return '5지선다형';
+  if (/서술|논술|풀이과정|이유/.test(text)) return '서술형';
+  if (/단답|주관/.test(text)) return '단답형';
+  return '';
+}
+
+function inferProblemFormType_(problemText) {
+  const text = String(problemText || '');
+  const choiceCount = (text.match(/[①②③④⑤]/g) || []).length;
+  if (choiceCount >= 4) return '5지선다형';
+  if (/서술형|풀이\s*과정|이유를\s*서술|증명|과정을\s*쓰|채점기준/.test(text)) return '서술형';
+  return text.trim() ? '단답형' : '';
 }
 
 function expandTwinSourceProblems_(examName, actualWrongProblems) {

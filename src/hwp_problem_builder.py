@@ -685,17 +685,46 @@ def insert_equation_object(hwp, formula):
 
 def split_equation_chain(formula):
     text = str(formula or "").strip()
+    if "," in text or "，" in text:
+        return [text]
     if text.count("=") < 2:
         return [text]
     parts = [part.strip() for part in re.split(r"(?<![<>!])=(?!=)", text)]
     return parts if len(parts) > 1 and all(parts) else [text]
 
 
-def insert_equation(hwp, formula):
+def split_equation_sequence(formula):
+    text = str(formula or "").strip()
+    if "," not in text and "，" not in text:
+        return [("formula", text)]
+    pieces = [piece.strip() for piece in re.split(r"\s*[,，]\s*", text) if piece.strip()]
+    equation_piece_count = sum(
+        1 for piece in pieces
+        if re.search(r"(?<![<>!])=(?!=)", piece)
+    )
+    if equation_piece_count < 2:
+        return [("formula", text)]
+    sequence = []
+    for index, piece in enumerate(pieces):
+        if index:
+            sequence.append(("text", ", "))
+        sequence.append(("formula", piece))
+    return sequence
+
+
+def insert_equation_chain(hwp, formula):
     for index, part in enumerate(split_equation_chain(formula)):
         if index:
             insert_plain_text(hwp, " = ")
         insert_equation_object(hwp, part)
+
+
+def insert_equation(hwp, formula):
+    for kind, value in split_equation_sequence(formula):
+        if kind == "text":
+            insert_plain_text(hwp, value)
+        else:
+            insert_equation_chain(hwp, value)
 
 
 def mm_to_hwp_unit(hwp, mm):
