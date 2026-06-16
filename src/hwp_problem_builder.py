@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -697,19 +698,89 @@ def insert_equation(hwp, formula):
         insert_equation_object(hwp, part)
 
 
+def mm_to_hwp_unit(hwp, mm):
+    try:
+        return int(hwp.MiliToHwpUnit(float(mm)))
+    except Exception:
+        return int(float(mm) * 283.465)
+
+
+def get_image_aspect_ratio(image_path):
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as image:
+            width, height = image.size
+            if width > 0 and height > 0:
+                return height / width
+    except Exception:
+        pass
+    return 0.75
+
+
+def prepare_picture_for_hwp(image_path):
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as image:
+            prepared = image.copy()
+            max_width_px = 350
+            if prepared.width > max_width_px:
+                height = max(1, round(prepared.height * max_width_px / prepared.width))
+                prepared = prepared.resize((max_width_px, height), Image.LANCZOS)
+            temp_path = Path(tempfile.gettempdir()) / (
+                f"hwp_picture_{os.getpid()}_{time.time_ns()}_{image_path.name}"
+            )
+            prepared.save(temp_path)
+            return temp_path
+    except Exception:
+        return image_path
+
+
+def resize_selected_picture_to_column(hwp, image_path, max_width_mm=68):
+    width_unit = mm_to_hwp_unit(hwp, max_width_mm)
+    height_unit = mm_to_hwp_unit(hwp, max_width_mm * get_image_aspect_ratio(image_path))
+    try:
+        pset = hwp.HParameterSet.HShapeObject
+        hwp.HAction.GetDefault("ShapeObjDialog", pset.HSet)
+        try:
+            pset.Width = width_unit
+            pset.Height = height_unit
+            pset.TreatAsChar = 1
+        except Exception:
+            pass
+        try:
+            pset.HSet.SetItem("Width", width_unit)
+            pset.HSet.SetItem("Height", height_unit)
+            pset.HSet.SetItem("TreatAsChar", 1)
+        except Exception:
+            pass
+        hwp.HAction.Execute("ShapeObjDialog", pset.HSet)
+    except Exception:
+        pass
+
+
 def insert_picture(hwp, image_path):
     if not image_path:
         insert_plain_text(hwp, "[이미지 파일 없음]")
         return
 
+    prepared_path = prepare_picture_for_hwp(image_path)
     try:
         hwp.InsertPicture(
-            str(image_path.resolve()), True, 0, False, False, 0, 0, 0
+            str(prepared_path.resolve()), True, 0, False, False, 0, 0, 0
         )
+        resize_selected_picture_to_column(hwp, image_path)
     except Exception:
         # 일부 한글 버전은 그림 삽입을 마친 뒤 선택 개체를 정리하면서
         # 예외를 발생시킨다. 재시도하면 그림이 중복되므로 완료로 처리한다.
         return
+    finally:
+        if prepared_path != image_path:
+            try:
+                prepared_path.unlink()
+            except Exception:
+                pass
 
 
 def insert_generated_content(hwp, input_path, text, fallback_image_number=1):
