@@ -279,6 +279,9 @@ def validate_spec_structure(spec, block):
         "two_parabolas_axis_aligned_square": (
             "equation_left", "equation_right", "square_side"
         ),
+        "parabola_origin_two_points": ("point1_x", "point1_y", "point2_x"),
+        "two_parabolas_vertical_segment": ("equation_top", "equation_bottom", "vertical_x"),
+        "square_side_points_trapezoid": ("ae", "df"),
         "coordinate_parallelogram": ("points",),
         "two_origin_parabolas_parallelogram": ("equation1", "equation2", "vertical_x"),
         "two_origin_parabolas_vertical_line_ratio": ("equation1", "equation2", "vertical_x"),
@@ -2072,6 +2075,105 @@ def render_parabola_axis_values(spec, output_path):
         annotate_axis_value(ax, x_range, y_range, "y", vertex[1], "left")
     if abs(y_intercept) > 1e-9 and abs(y_intercept - vertex[1]) > 1e-9:
         annotate_axis_value(ax, x_range, y_range, "y", y_intercept, "left")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_parabola_origin_two_points(spec, output_path):
+    p1x = parse_number(spec.get("point1_x") or spec.get("x_value"), 4)
+    p1y = parse_number(spec.get("point1_y") or spec.get("y_value") or spec.get("y_vaule"), -8)
+    p2x = parse_number(spec.get("point2_x") or spec.get("k_x_value"), -2)
+    p2_label = str(spec.get("point2_y") or spec.get("k_value") or "k").strip()
+    try:
+        p2y = float(normalize_expr(p2_label))
+    except Exception:
+        p2y = None
+    if p2y is None:
+        a = p1y / (p1x ** 2) if abs(p1x) > 1e-9 else -0.5
+        p2y = a * (p2x ** 2)
+    else:
+        a = p1y / (p1x ** 2) if abs(p1x) > 1e-9 else p2y / (p2x ** 2)
+    equation = {"expr": f"({a})*x**2", "label": f"y={format_number(a)}x^2"}
+    x_values = [0, p1x, p2x]
+    y_values = [0, p1y, p2y]
+    x_range = widen_x_for_parabola_style(pad_range(min(x_values), max(x_values), 0.25, 2.0), 0.08)
+    curve_y = y_values_for_equations([equation], x_range)
+    y_range = steepen_parabola_view(x_range, pad_range(min(curve_y + y_values), max(curve_y + y_values), 0.20, 2.0), 0.78)
+
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    xs = np.linspace(x_range[0], x_range[1], 1200)
+    ax.plot(xs, safe_eval(equation["expr"], xs), color="#1f77b4", lw=lw(2.0), zorder=3)
+    points = [
+        point_item("", p1x, p1y),
+        point_item("", p2x, p2y),
+    ]
+    for point in points:
+        ax.scatter([point["x"]], [point["y"]], color="black", s=marker_area(22), zorder=5)
+        ax.plot([point["x"], point["x"]], [0, point["y"]], color="#e6c982", lw=lw(0.8), ls="--", zorder=2)
+        ax.plot([0, point["x"]], [point["y"], point["y"]], color="#e6c982", lw=lw(0.8), ls="--", zorder=2)
+    annotate_axis_value(ax, x_range, y_range, "x", p2x, "above")
+    annotate_axis_value(ax, x_range, y_range, "x", p1x, "above")
+    annotate_axis_value(ax, x_range, y_range, "y", p1y, "left")
+    if p2_label and not re.fullmatch(r"-?\d+(?:\.\d+)?", p2_label):
+        ax.text(0.04, p2y, p2_label, fontsize=fs(9), ha="left", va="center")
+    else:
+        annotate_axis_value(ax, x_range, y_range, "y", p2y, "right")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_two_parabolas_vertical_segment(spec, output_path):
+    eq_top = parse_y_equation(spec.get("equation_top") or spec.get("positive_function") or spec.get("equation1") or "y=x^2+3")
+    eq_bottom = parse_y_equation(spec.get("equation_bottom") or spec.get("negative_function") or spec.get("equation2") or "y=-x^2-5")
+    vertical_x = parse_number(spec.get("vertical_x"), -3)
+    top_y = equation_value(eq_top, vertical_x)
+    bottom_y = equation_value(eq_bottom, vertical_x)
+    x_range = widen_x_for_parabola_style(pad_range(min(vertical_x, 0), max(vertical_x, 0), 0.45, 2.0), 0.10)
+    y_values = y_values_for_equations([eq_top, eq_bottom], x_range) + [0, top_y, bottom_y]
+    y_range = steepen_parabola_view(x_range, pad_range(min(y_values), max(y_values), 0.18, 2.0), 0.78)
+    fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
+    setup_axes(ax, x_range, y_range)
+    xs = np.linspace(x_range[0], x_range[1], 1200)
+    ax.plot(xs, safe_eval(eq_top["expr"], xs), color="#1f77b4", lw=lw(2.0), zorder=3)
+    ax.plot(xs, safe_eval(eq_bottom["expr"], xs), color="#2ca02c", lw=lw(2.0), zorder=3)
+    ax.plot([vertical_x, vertical_x], [bottom_y, top_y], color="#8e44ad", lw=lw(1.1), zorder=4)
+    points = [point_item("P", vertical_x, top_y), point_item("Q", vertical_x, bottom_y)]
+    plot_labeled_points(ax, points)
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def render_square_side_points_trapezoid(spec, output_path):
+    ae = parse_length(spec.get("ae"), 2)
+    df = parse_length(spec.get("df"), 8)
+    side = parse_length(spec.get("side") or spec.get("square_side"), max(10, ae, df) + 2)
+    ae = min(max(ae, 0), side)
+    df = min(max(df, 0), side)
+    a, b, c, d = (0, side), (0, 0), (side, 0), (side, side)
+    e = (0, side - ae)
+    f = (side, side - df)
+    polygon = [e, b, f, d]
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, side, side)
+    ax.add_patch(plt.Rectangle((0, 0), side, side, facecolor="white", edgecolor="black", lw=lw(1.2), zorder=2))
+    ax.add_patch(plt.Polygon(polygon, closed=True, facecolor="#9eece7", edgecolor="#267a2a", lw=lw(1.0), alpha=0.8, zorder=3))
+    label_offsets = {
+        "A": (-side * 0.06, side * 0.05, "right", "bottom"),
+        "B": (-side * 0.06, -side * 0.05, "right", "top"),
+        "C": (side * 0.06, -side * 0.05, "left", "top"),
+        "D": (side * 0.06, side * 0.05, "left", "bottom"),
+        "E": (-side * 0.06, 0, "right", "center"),
+        "F": (side * 0.06, 0, "left", "center"),
+    }
+    for label, (x, y) in {"A": a, "B": b, "C": c, "D": d, "E": e, "F": f}.items():
+        dx, dy, ha, va = label_offsets[label]
+        ax.text(x + dx, y + dy, label, fontsize=fs(9), ha=ha, va=va, zorder=5)
+    draw_dimension(ax, a, e, length_label(spec.get("ae"), ae), (-side * 0.22, 0))
+    draw_dimension(ax, d, f, length_label(spec.get("df"), df), (side * 0.18, 0))
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return []
@@ -4680,6 +4782,12 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_two_parabolas_square(spec, output_path)
     elif template == "two_parabolas_axis_aligned_square":
         unsupported = render_two_parabolas_axis_aligned_square(spec, output_path)
+    elif template == "parabola_origin_two_points":
+        unsupported = render_parabola_origin_two_points(spec, output_path)
+    elif template == "two_parabolas_vertical_segment":
+        unsupported = render_two_parabolas_vertical_segment(spec, output_path)
+    elif template == "square_side_points_trapezoid":
+        unsupported = render_square_side_points_trapezoid(spec, output_path)
     elif template == "two_parabolas_shared_vertex_intersections":
         unsupported = render_two_parabolas_shared_vertex_intersections(spec, output_path)
     elif template == "line_to_parabola_quadrant_match":
