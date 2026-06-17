@@ -896,7 +896,22 @@ def try_create_one_cell_table(hwp, width_mm=68, min_height_mm=12):
 
 def leave_table_cell(hwp):
     run_action(hwp, "MoveLineEnd")
-    if not run_action(hwp, "MoveRight"):
+
+    # Leaving a HWP table cell is surprisingly stateful. A plain MoveRight can
+    # stay inside the last cell, so first select the current cell/table and then
+    # move past the selected table object. The fallback sequence handles older
+    # HWP builds that do not expose the table block actions consistently.
+    if run_action(hwp, "TableCellBlock"):
+        run_action(hwp, "TableCellBlockExtend")
+        run_action(hwp, "TableCellBlockExtend")
+        if run_action(hwp, "MoveRight"):
+            run_action(hwp, "BreakPara")
+            return
+
+    run_action(hwp, "Cancel")
+    for _ in range(4):
+        if run_action(hwp, "MoveRight"):
+            break
         run_action(hwp, "Cancel")
     run_action(hwp, "BreakPara")
 
