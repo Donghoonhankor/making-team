@@ -60,6 +60,7 @@ matplotlib.rcParams.update(
 _ORIGINAL_AXES_TEXT = Axes.text
 _ORIGINAL_AXES_ANNOTATE = Axes.annotate
 _HANGUL_RE = re.compile(r"[가-힣]")
+_KOREAN_TEXT_RE = re.compile(r"[가-힣\u3130-\u318f\u3200-\u321e\u3260-\u327f]")
 _MATH_SIGNAL_RE = re.compile(
     r"[A-Za-zθπ∠]|(?:\d|\))\s*[,=+\-*/^]|[=+\-*/^]\s*(?:\d|\()"
 )
@@ -118,6 +119,8 @@ def math_styled_text(self, x, y, s, *args, **kwargs):
     formatted = format_math_text(s)
     if isinstance(formatted, str) and "$" in formatted:
         kwargs.setdefault("math_fontfamily", "stix")
+    elif KOREAN_FONT is not None and isinstance(formatted, str) and _KOREAN_TEXT_RE.search(formatted):
+        kwargs.setdefault("fontproperties", KOREAN_FONT)
     return _ORIGINAL_AXES_TEXT(self, x, y, formatted, *args, **kwargs)
 
 
@@ -125,6 +128,8 @@ def math_styled_annotate(self, text, *args, **kwargs):
     formatted = format_math_text(text)
     if isinstance(formatted, str) and "$" in formatted:
         kwargs.setdefault("math_fontfamily", "stix")
+    elif KOREAN_FONT is not None and isinstance(formatted, str) and _KOREAN_TEXT_RE.search(formatted):
+        kwargs.setdefault("fontproperties", KOREAN_FONT)
     return _ORIGINAL_AXES_ANNOTATE(
         self, formatted, *args, **kwargs
     )
@@ -661,11 +666,11 @@ def has_ambiguous_points(value):
 
 def parse_labels(value):
     labels = []
-    for item in split_csv_outside_parentheses(value or ""):
+    raw = value or ""
+    items = split_semicolon_outside_parentheses(raw) if ";" in raw else split_csv_outside_parentheses(raw)
+    for item in items:
         label = item.strip()
         if not label or label.lower() == "none":
-            continue
-        if re.search(r"[=^²√]|\b[xy]\b", label, re.I):
             continue
         labels.append(label)
     return labels
