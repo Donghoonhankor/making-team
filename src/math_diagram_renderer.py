@@ -3493,6 +3493,8 @@ def render_annulus_radius_increase(spec, output_path):
     inner = parse_length(spec.get("inner_radius"), 8)
     increase = parse_length(spec.get("increase") or spec.get("radius_gap"), max(inner * 0.25, 1))
     outer = inner + increase
+    inner_label = spec.get("inner_radius_label") or spec.get("radius_label") or "r"
+    increase_label = spec.get("increase_label") or spec.get("radius_gap_label") or spec.get("increase") or spec.get("radius_gap") or "x"
     fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
     setup_plain_geometry_axes(ax, outer * 2, outer * 2)
     center = (outer, outer)
@@ -3502,9 +3504,9 @@ def render_annulus_radius_increase(spec, output_path):
     ax.plot([center[0] + inner, center[0] + outer], [center[1], center[1]], color="#555555", lw=lw(0.9))
     ax.scatter([center[0]], [center[1]], color="black", s=marker_area(10), zorder=5)
     ax.text(center[0] + inner * 0.52, center[1] + outer * 0.07,
-            length_label(spec.get("inner_radius"), inner, " cm"), fontsize=fs(8), ha="center", va="bottom")
+            length_label(inner_label, inner, " cm"), fontsize=fs(8), ha="center", va="bottom")
     ax.text(center[0] + inner + increase * 0.55, center[1] + outer * 0.07,
-            str(spec.get("increase") or spec.get("radius_gap") or "x") + (" cm" if spec.get("increase") else ""),
+            length_label(increase_label, increase, " cm"),
             fontsize=fs(8), ha="center", va="bottom")
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
