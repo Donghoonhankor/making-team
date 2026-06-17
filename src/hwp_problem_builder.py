@@ -152,6 +152,8 @@ def parse_tokens_from_number(text, fallback_image_number):
     text = strip_bare_image_prompt_blocks(text)
     pattern = re.compile(
         r"("
+        r"<보기>\s*([\s\S]*?)\s*</보기>"
+        r"|"
         r"\[이미지\s*필요\s*(?:\((\d+)\)|(\d+))?\s*:[\s\S]*?\]"
         r"|\[IMAGE_PROMPT\s*(?:\((\d+)\)|(\d+))?\s*:[\s\S]*?\]"
         r"|\[수식\s*:\s*([\s\S]*?)\]"
@@ -168,10 +170,13 @@ def parse_tokens_from_number(text, fallback_image_number):
             )
 
         full = match.group(1)
-        korean_image_number = match.group(2) or match.group(3)
-        formula = match.group(6)
+        choice_box = match.group(2)
+        korean_image_number = match.group(3) or match.group(4)
+        formula = match.group(7)
 
-        if full.upper().startswith("[IMAGE_PROMPT"):
+        if choice_box is not None:
+            tokens.append(Token("choice_box", choice_box.strip()))
+        elif full.upper().startswith("[IMAGE_PROMPT"):
             pass
         elif full.startswith("[이미지"):
             number = (
@@ -663,6 +668,68 @@ def insert_plain_text(hwp, text):
             run_action(hwp, "BreakLine")
 
 
+def try_create_one_cell_table(hwp, width_mm=68, min_height_mm=12):
+    try:
+        pset = hwp.HParameterSet.HTableCreation
+        hwp.HAction.GetDefault("TableCreate", pset.HSet)
+        pset.Rows = 1
+        pset.Cols = 1
+        pset.WidthType = 2
+        pset.HeightType = 1
+        try:
+            pset.CreateItemArray("ColWidth", 1)
+            pset.ColWidth.SetItem(0, mm_to_hwp_unit(hwp, width_mm))
+        except Exception:
+            pass
+        try:
+            pset.CreateItemArray("RowHeight", 1)
+            pset.RowHeight.SetItem(0, mm_to_hwp_unit(hwp, min_height_mm))
+        except Exception:
+            pass
+        result = hwp.HAction.Execute("TableCreate", pset.HSet)
+        return result is not False
+    except Exception:
+        return False
+
+
+def leave_table_cell(hwp):
+    run_action(hwp, "MoveLineEnd")
+    if not run_action(hwp, "MoveRight"):
+        run_action(hwp, "Cancel")
+    run_action(hwp, "BreakPara")
+
+
+def insert_token_sequence(hwp, tokens, input_path=None):
+    for token in tokens:
+        if token.kind == "text":
+            insert_plain_text(hwp, token.value)
+        elif token.kind == "formula":
+            insert_equation(hwp, token.value)
+        elif token.kind == "image" and input_path is not None:
+            insert_picture(hwp, get_image_path(input_path, token.number))
+        elif token.kind == "choice_box":
+            insert_choice_box(hwp, token.value)
+
+
+def insert_choice_box(hwp, text):
+    content = normalize_text(str(text or "").strip())
+    if not content:
+        return
+
+    run_action(hwp, "BreakPara")
+    if try_create_one_cell_table(hwp):
+        insert_token_sequence(hwp, parse_tokens(content))
+        leave_table_cell(hwp)
+        return
+
+    insert_plain_text(hwp, "┌ 보기 ┐")
+    run_action(hwp, "BreakLine")
+    insert_token_sequence(hwp, parse_tokens(content))
+    run_action(hwp, "BreakLine")
+    insert_plain_text(hwp, "└────┘")
+    run_action(hwp, "BreakPara")
+
+
 def insert_equation_object(hwp, formula):
     equation = convert_formula_to_hwp(formula)
     if not equation:
@@ -816,13 +883,7 @@ def insert_generated_content(hwp, input_path, text, fallback_image_number=1):
     tokens, next_image_number = parse_tokens_from_number(
         text, fallback_image_number
     )
-    for token in tokens:
-        if token.kind == "text":
-            insert_plain_text(hwp, token.value)
-        elif token.kind == "formula":
-            insert_equation(hwp, token.value)
-        elif token.kind == "image":
-            insert_picture(hwp, get_image_path(input_path, token.number))
+    insert_token_sequence(hwp, tokens, input_path=input_path)
     return next_image_number
 
 

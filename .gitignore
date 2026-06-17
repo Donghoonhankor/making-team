@@ -5,3 +5,10 @@ __pycache__/
 *.hwp
 *.pdf
 *_이미지*.PNG
+
+# Local past-exam template libraries may contain copyrighted/internal images.
+past_exam_image_builder/library/
+past_exam_image_builder/dist/
+past_exam_image_builder/build*/
+past_exam_image_builder/release*/
+past_exam_image_builder/*_test_library/
