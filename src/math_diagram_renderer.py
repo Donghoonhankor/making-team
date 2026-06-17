@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
+from PIL import Image, ImageDraw, ImageFont
 
 
 FIGURE_SIZE_INCHES = (1.8, 1.3)  # 720 x 520 px at 400 dpi; quarter-size in HWP/print layout.
@@ -28,6 +30,7 @@ OUTPUT_DPI = 400
 STYLE_SCALE = 200 / OUTPUT_DPI
 KOREAN_FONT_PATH = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "malgun.ttf"
 KOREAN_FONT = FontProperties(fname=str(KOREAN_FONT_PATH)) if KOREAN_FONT_PATH.exists() else None
+PIL_KOREAN_FONT_PATH = KOREAN_FONT_PATH
 
 
 def select_math_font():
@@ -260,6 +263,7 @@ def validate_spec_structure(spec, block):
             warnings.append(f"corrupted key/value near {key}")
     template = str(spec.get("template", "")).strip().lower()
     required_fields = {
+        "past_exam_image": ("source_id",),
         "parabola_basic_shape": ("equation",),
         # The renderer already falls back to the equation text for the label.
         "parabola_labeled_xintercepts": ("equation",),
@@ -302,6 +306,8 @@ def validate_spec_structure(spec, block):
         "linear_two_lines_xaxis_square": ("equation_left", "equation_right"),
     }
     missing = [field for field in required_fields.get(template, ()) if not spec.get(field)]
+    if template == "past_exam_image" and missing and get_past_exam_source_id(spec):
+        missing = []
     if missing:
         warnings.append(f"{template} missing required fields: {', '.join(missing)}")
     for field in ("x_range", "y_range"):
@@ -311,6 +317,162 @@ def validate_spec_structure(spec, block):
         ):
             warnings.append(f"{field} must be numeric min,max")
     return warnings
+
+
+def get_past_exam_source_id(spec):
+    for key in (
+        "source_id",
+        "past_exam_image_id",
+        "pastExamImageId",
+        "exam_image_id",
+        "기출이미지ID",
+    ):
+        value = str(spec.get(key, "")).strip()
+        if value:
+            return value
+    return ""
+
+
+def get_past_exam_library_roots(spec):
+    roots = []
+    for value in (
+        spec.get("library_root"),
+        spec.get("libraryRoot"),
+        spec.get("라이브러리경로"),
+        os.environ.get("PAST_EXAM_IMAGE_LIBRARY"),
+    ):
+        if value:
+            roots.append(Path(str(value).strip()))
+
+    executable_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    cwd = Path.cwd()
+    roots.extend(
+        [
+            executable_dir / "library",
+            executable_dir / "past_exam_image_library",
+            executable_dir / "past_exam_image_builder" / "dist" / "library",
+            executable_dir.parent / "past_exam_image_builder" / "dist" / "library",
+            cwd / "library",
+            cwd / "past_exam_image_library",
+            cwd / "past_exam_image_builder" / "dist" / "library",
+            cwd.parent / "past_exam_image_builder" / "dist" / "library",
+            Path(__file__).resolve().parent / "past_exam_image_builder" / "dist" / "library",
+        ]
+    )
+
+    unique = []
+    seen = set()
+    for root in roots:
+        try:
+            resolved = root.expanduser().resolve()
+        except OSError:
+            resolved = root.expanduser()
+        if str(resolved).lower() in seen:
+            continue
+        seen.add(str(resolved).lower())
+        unique.append(resolved)
+    return unique
+
+
+def find_past_exam_entry_dir(spec):
+    source_id = get_past_exam_source_id(spec)
+    if not source_id:
+        return None, "past_exam_image missing source_id"
+    safe_source_id = re.sub(r'[<>:"/\\|?*]+', "_", source_id).strip(" .")
+    checked = []
+    for root in get_past_exam_library_roots(spec):
+        candidate = root / safe_source_id
+        checked.append(str(candidate))
+        if (candidate / "recipe.json").exists() and (candidate / "original.png").exists():
+            return candidate, ""
+        candidate = root / source_id
+        checked.append(str(candidate))
+        if (candidate / "recipe.json").exists() and (candidate / "original.png").exists():
+            return candidate, ""
+    return None, "past_exam_image source not found: " + source_id
+
+
+def load_pil_font(size):
+    candidates = [
+        PIL_KOREAN_FONT_PATH,
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arial.ttf",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return ImageFont.truetype(str(candidate), max(8, int(size)))
+    return ImageFont.load_default()
+
+
+def parse_past_exam_values(spec):
+    reserved = {
+        "template", "type", "source_id", "past_exam_image_id", "pastExamImageId",
+        "exam_image_id", "기출이미지ID", "library_root", "libraryRoot", "라이브러리경로",
+        "values", "overlays",
+    }
+    values = {
+        str(key).strip(): str(value).strip()
+        for key, value in spec.items()
+        if str(key).strip() not in reserved and str(value).strip()
+    }
+
+    packed_values = str(spec.get("values") or spec.get("overlays") or "").strip()
+    if packed_values:
+        for item in re.split(r"\s*[;,]\s*", packed_values):
+            if not item or "=" not in item:
+                continue
+            key, value = item.split("=", 1)
+            values[key.strip()] = value.strip()
+    return values
+
+
+def render_past_exam_image(spec, output_path):
+    entry_dir, error = find_past_exam_entry_dir(spec)
+    if error:
+        return [error]
+
+    recipe_path = entry_dir / "recipe.json"
+    original_path = entry_dir / "original.png"
+    try:
+        recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"past_exam_image bad recipe: {exc}"]
+
+    overlays = recipe.get("overlays") or []
+    values = parse_past_exam_values(spec)
+    if not overlays:
+        shutil.copy2(original_path, output_path)
+        return []
+
+    image = Image.open(original_path).convert("RGB")
+    draw = ImageDraw.Draw(image)
+    missing = []
+    for overlay in overlays:
+        name = str(overlay.get("name", "")).strip()
+        if not name:
+            continue
+        value = values.get(name)
+        if value is None:
+            value = str(overlay.get("original", "")).strip()
+            missing.append(name)
+        try:
+            box = tuple(int(float(item)) for item in overlay.get("box", []))
+        except (TypeError, ValueError):
+            continue
+        if len(box) != 4:
+            continue
+        draw.rectangle(box, fill="white")
+        font = load_pil_font(overlay.get("font_size", 28))
+        text_box = draw.textbbox((0, 0), value, font=font)
+        text_width = text_box[2] - text_box[0]
+        text_height = text_box[3] - text_box[1]
+        x = box[0] + max(0, (box[2] - box[0] - text_width) / 2)
+        y = box[1] + max(0, (box[3] - box[1] - text_height) / 2) - text_box[1]
+        draw.text((x, y), value, fill=str(overlay.get("color") or "#000000"), font=font)
+
+    image.save(output_path)
+    if missing:
+        return ["past_exam_image used original values for missing overlays: " + ", ".join(missing)]
+    return []
 
 
 def parse_range(value, default):
@@ -1062,7 +1224,13 @@ def render_parabola_calculated_template(spec, output_path, mode):
         if show_y and abs(y_intercept[1]) > 1e-9:
             points.append(point_item("C", y_intercept[0], y_intercept[1]))
         if show_vertex:
-            points.append(point_item("V", vertex[0], vertex[1]))
+            vertex_is_y_intercept = (
+                show_y
+                and abs(y_intercept[0] - vertex[0]) < 1e-9
+                and abs(y_intercept[1] - vertex[1]) < 1e-9
+            )
+            if not vertex_is_y_intercept:
+                points.append(point_item("V", vertex[0], vertex[1]))
 
     xs_for_range = [vertex[0], 0] + roots + [point["x"] for point in points]
     if len(roots) >= 2:
@@ -4440,7 +4608,9 @@ def render_block(index, block, input_path, output_dir):
     template = spec.get("template", "")
     output_path = build_output_path(input_path, output_dir, index)
     validation_warnings = validate_spec_structure(spec, block)
-    if template == "parabola_band_area":
+    if template == "past_exam_image":
+        unsupported = render_past_exam_image(spec, output_path)
+    elif template == "parabola_band_area":
         unsupported = render_parabola_band_area(spec, output_path)
     elif template == "two_origin_parabolas_horizontal_line":
         unsupported = render_two_origin_parabolas_horizontal_line(spec, output_path)

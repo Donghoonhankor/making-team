@@ -315,19 +315,23 @@ def parse_document_content(
         r"(?im)^\s*\[(?:정답(?:\s*및\s*해설)?|답안)\]\s*$",
         normalized,
     )
-    if not answer_match:
-        raise ValueError(
-            "입력 텍스트에서 '[정답 및 해설]' 또는 '[정답]' 구역을 찾지 못했습니다."
+    if answer_match:
+        question_block = normalized[: answer_match.start()].rstrip()
+        answers = normalized[answer_match.end() :].strip()
+        question_start = re.search(r"(?im)^\s*문항\s*1\s*\.", question_block)
+        questions = (
+            question_block[question_start.start() :].strip()
+            if question_start
+            else question_block.strip()
         )
-
-    question_block = normalized[: answer_match.start()].rstrip()
-    answers = normalized[answer_match.end() :].strip()
-    question_start = re.search(r"(?im)^\s*문항\s*1\s*\.", question_block)
-    questions = (
-        question_block[question_start.start() :].strip()
-        if question_start
-        else question_block.strip()
-    )
+    else:
+        inline = split_inline_answer_document(normalized)
+        if not inline:
+            raise ValueError(
+                "입력 텍스트에서 '[정답 및 해설]' 또는 '[정답]' 구역을 찾지 못했고, "
+                "문항별 '정답:'/'해설:' 인라인 형식도 찾지 못했습니다."
+            )
+        questions, answers = inline
     if not questions:
         raise ValueError("입력 텍스트에서 문제 본문을 찾지 못했습니다.")
     if not answers:
@@ -353,6 +357,34 @@ def parse_document_content(
         questions=questions,
         answers=answers,
     )
+
+
+def split_inline_answer_document(text):
+    question_start = re.search(r"(?im)^\s*문항\s*1\s*\.", text)
+    source = text[question_start.start() :].strip() if question_start else text.strip()
+    matches = list(re.finditer(r"(?im)^\s*문항\s*(\d+)\s*\.", source))
+    if not matches:
+        return None
+
+    question_parts = []
+    answer_parts = []
+    for index, match in enumerate(matches):
+        number = int(match.group(1))
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(source)
+        body = source[match.end() : end].strip()
+        answer_marker = re.search(r"(?im)^\s*정답\s*:", body)
+        if not answer_marker:
+            return None
+
+        question_body = body[: answer_marker.start()].rstrip()
+        answer_body = body[answer_marker.start() :].strip()
+        if not question_body or not answer_body:
+            return None
+
+        question_parts.append(f"문항{number}.\n{question_body}")
+        answer_parts.append(f"문항{number}.\n{answer_body}")
+
+    return "\n\n".join(question_parts), "\n\n".join(answer_parts)
 
 
 def split_numbered_sections(text, section_name):
