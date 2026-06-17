@@ -2116,6 +2116,38 @@ function getGeneratedNumberingStyleIssue_(text) {
   return '';
 }
 
+function normalizeGeneratedNumberingStyle_(text) {
+  const circled = ['', '\u2460', '\u2461', '\u2462', '\u2463', '\u2464'];
+  const lines = String(text || '').split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const run = [];
+    for (let j = i; j < lines.length; j++) {
+      const match = String(lines[j] || '').match(/^(\s*)(?:([1-5])[\).]|\[([1-5])\])\s+(.*)$/);
+      if (!match) break;
+      const number = Number(match[2] || match[3]);
+      if (run.length && number !== run[run.length - 1].number + 1) break;
+      run.push({ index: j, number: number });
+    }
+    if (run.length >= 3) {
+      run.forEach(item => {
+        lines[item.index] = String(lines[item.index]).replace(
+          /^(\s*)(?:[1-5][\).]|\[[1-5]\])\s+/,
+          '$1' + circled[item.number] + ' '
+        );
+      });
+      i = run[run.length - 1].index;
+    }
+  }
+
+  return lines.map(line => {
+    return String(line || '').replace(
+      /^(\s*)(?:([1-9]\d*)[\).]|\[([1-9]\d*)\])\s+/,
+      (all, spaces, n1, n2) => spaces + '(' + (n1 || n2) + ') '
+    );
+  }).join('\n');
+}
+
 function buildSimilarProblemsPrompt_(studentName, examName, wrongProblems, reportText, rulesByType, planItems) {
   const compactWrongProblems = groupTwinWrongProblems_(wrongProblems).map(group => ({
     problemNumber: group.baseProblemNumber,
@@ -5563,9 +5595,10 @@ function isImageGenerationExample_(example) {
 }
 
 function validateGeneralProblemImageOutput_(text, exampleGroups) {
-  const normalized = normalizeImagePromptBlocks_(
+  let normalized = normalizeImagePromptBlocks_(
     String(text || '').replace(/\[그림\s*필요\s*:/g, '[이미지 필요:')
   );
+  normalized = normalizeGeneratedNumberingStyle_(normalized);
   const numberingIssue = getGeneratedNumberingStyleIssue_(normalized);
   if (numberingIssue) {
     throw new Error('일반문항 표기 형식 오류: ' + numberingIssue);
@@ -6136,9 +6169,10 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
 }
 
 function validatePastExamProblemImageOutput_(text) {
-  const normalized = normalizeImagePromptBlocks_(
+  let normalized = normalizeImagePromptBlocks_(
     String(text || '').replace(/\[그림\s*필요\s*:/g, '[이미지 필요:')
   );
+  normalized = normalizeGeneratedNumberingStyle_(normalized);
   const numberingIssue = getGeneratedNumberingStyleIssue_(normalized);
   if (numberingIssue) {
     throw new Error('기출 유사문항 표기 형식 오류: ' + numberingIssue);
