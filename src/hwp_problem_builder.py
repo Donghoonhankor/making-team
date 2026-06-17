@@ -294,6 +294,8 @@ def normalize_text(text):
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"__(.*?)__", r"\1", text)
+    text = re.sub(r"(?im)^\s*출처유형\s*:\s*.*(?:\n|$)", "", text)
+    text = re.sub(r"\[[^\]\n]*\d+\s*점[^\]\n]*\]", "", text)
     return text.replace("`", "")
 
 
