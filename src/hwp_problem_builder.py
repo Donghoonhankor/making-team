@@ -251,6 +251,7 @@ def parse_tokens_from_number(text, fallback_image_number):
         r"\[이미지\s*필요\s*(?:\((\d+)\)|(\d+))?\s*:[\s\S]*?\]"
         r"|\[IMAGE_PROMPT\s*(?:\((\d+)\)|(\d+))?\s*:[\s\S]*?\]"
         r"|\[(?:수식|formula)\s*:\s*([\s\S]*?)\]"
+        r"|\$([^$\n]+)\$"
         r")",
         re.IGNORECASE,
     )
@@ -266,7 +267,7 @@ def parse_tokens_from_number(text, fallback_image_number):
         full = match.group(1)
         choice_box = match.group(2)
         korean_image_number = match.group(3) or match.group(4)
-        formula = match.group(7)
+        formula = match.group(7) or match.group(8)
 
         if choice_box is not None:
             tokens.append(Token("choice_box", choice_box.strip()))
@@ -418,12 +419,20 @@ def convert_formula_to_hwp(value):
     text = re.sub(r"\\+rightarrow\b", " → ", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+Leftarrow\b", " ⇐ ", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+leftrightarrow\b", " ↔ ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\\+times\b", " times ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\\+cdots\b", " cdots ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\\+in\b", " in ", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+neq\b", " ≠ ", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+ne\b", " ≠ ", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+vec\s*\{([^{}]+)\}", r"vec {\1}", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+overline\s*\{([^{}]+)\}", r"bar {\1}", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+angle\b", "angle ", text, flags=re.IGNORECASE)
     text = re.sub(r"\\+triangle\b", "triangle ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\\+begin\s*\{\s*cases\s*\}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\\+end\s*\{\s*cases\s*\}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\\+text\s*\{([^{}]*)\}", r"\1", text, flags=re.IGNORECASE)
+    text = text.replace(r"\{", "{").replace(r"\}", "}")
+    text = re.sub(r"\\\\+", " , ", text)
 
     def fraction_repl(match):
         return "{" + match.group(1) + "} over {" + match.group(2) + "}"
@@ -934,11 +943,10 @@ def insert_choice_box(hwp, text):
         return
 
     run_action(hwp, "BreakPara")
-    if try_create_one_cell_table(hwp):
-        insert_token_sequence(hwp, parse_tokens(content))
-        leave_table_cell(hwp)
-        return
-
+    # A real HWP table can trap the cursor inside the final cell on some HWP
+    # builds, causing every following question to be written into the table.
+    # Use a stable printable box instead; math tokenization inside the block is
+    # still preserved, and the cursor remains in normal document flow.
     insert_plain_text(hwp, "┌ 보기 ┐")
     run_action(hwp, "BreakLine")
     insert_token_sequence(hwp, parse_tokens(content))

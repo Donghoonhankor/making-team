@@ -2582,7 +2582,7 @@ def render_linear_axis_triangle(spec, output_path):
         vy = line_y(line, vx) or 0
         points = [point_item("A", vx, vy), point_item("B", line_x_at_y(line, 0) or 0, 0), point_item("C", vx, 0)]
     else:
-        points = [point_item("A", line_x_at_y(line, 0) or 0, 0), point_item("B", 0, line_y(line, 0) or 0), point_item("O", 0, 0)]
+        points = [point_item("A", line_x_at_y(line, 0) or 0, 0), point_item("B", 0, line_y(line, 0) or 0), point_item("", 0, 0)]
     return render_linear_scene(output_path, [line], points=points, polygons=[points], guides=False,
                                x_candidates=[point["x"] for point in points], y_candidates=[point["y"] for point in points],
                                shade_color="#f6c7d7")
@@ -4759,6 +4759,13 @@ def render_block(index, block, input_path, output_dir):
     spec = parse_key_values(block)
     kind = spec.get("type", "coordinate_plane")
     template = spec.get("template", "")
+    if (
+        template == "parabola_xintercepts_yintercept_triangle"
+        and spec.get("equation", "")
+        and "^2" not in spec.get("equation", "")
+        and "**2" not in spec.get("equation", "")
+    ):
+        template = "linear_axis_triangle"
     output_path = build_output_path(input_path, output_dir, index)
     validation_warnings = validate_spec_structure(spec, block)
     if template == "past_exam_image":
