@@ -618,6 +618,7 @@ def parse_equations(value):
         items = split_csv_outside_parentheses(value)
     for item in items:
         clean = item.strip()
+        clean = re.sub(r"\{\s*label\s*=\s*[^{}]+?\s*\}", "", clean, flags=re.IGNORECASE).strip()
         if not clean:
             continue
         if re.search(r"\b[a-wzA-WZ]\b", clean.replace("x", "").replace("y", "")):
@@ -3839,9 +3840,32 @@ def validate_coordinate_plane_semantics(spec, equations, points):
 def render_coordinate_plane(spec, output_path):
     x_range = parse_range(spec.get("x_range"), (-6, 6))
     y_range = parse_range(spec.get("y_range"), (-10, 10))
-    equations = parse_equations(spec.get("equation", ""))
+    equation_text = spec.get("equation", "")
+    inline_curve_labels = [
+        match.group(1).strip()
+        for match in re.finditer(r"\{\s*label\s*=\s*([^{}]+?)\s*\}", str(equation_text), flags=re.IGNORECASE)
+    ]
+    equations = parse_equations(equation_text)
     points = parse_points(spec.get("points", ""))
-    labels = parse_labels(spec.get("labels", ""))
+    labels = parse_labels(spec.get("labels", "") or spec.get("curve_labels", ""))
+    if not labels:
+        labels = inline_curve_labels
+    y_equation_count = len([equation for equation in equations if equation.get("kind") == "y"])
+    quadratic_equation_count = len([
+        equation for equation in equations
+        if equation.get("kind") == "y" and "x**2" in equation.get("expr", "")
+    ])
+    exaggerate_quadratic_curves = (
+        not spec.get("x_range")
+        and not points
+        and y_equation_count >= 3
+        and quadratic_equation_count == y_equation_count
+    )
+    quadratic_display_scale = 1.75 if exaggerate_quadratic_curves else 1.0
+    if exaggerate_quadratic_curves:
+        x_range = (-2.4, 2.4)
+        if not spec.get("y_range"):
+            y_range = (-8, 8)
     x_range, y_range = auto_focus_ranges(spec, equations, points, x_range, y_range)
     x_range, y_range = expand_range_for_points(x_range, y_range, points)
     warnings = []
@@ -3859,14 +3883,18 @@ def render_coordinate_plane(spec, output_path):
     x = np.linspace(x_range[0], x_range[1], 1400)
     y_curves = []
     unsupported = []
+    plotted_curves = []
     for equation in equations:
         if equation["kind"] == "y":
             try:
                 y = safe_eval(equation["expr"], x)
                 if np.isscalar(y):
                     y = np.full_like(x, float(y))
-                ax.plot(x, y, lw=lw(2))
+                if quadratic_display_scale != 1.0:
+                    y = y * quadratic_display_scale
+                line, = ax.plot(x, y, lw=lw(2))
                 y_curves.append((equation["raw"], y))
+                plotted_curves.append((equation, y, line.get_color()))
             except Exception as err:
                 unsupported.append(f"{equation['raw']}: {err}")
         elif equation["kind"] == "x":
@@ -3902,6 +3930,24 @@ def render_coordinate_plane(spec, output_path):
                 ax.annotate(label, (point["x"], point["y"]), xytext=(4, 4),
                             textcoords="offset points", ha="left", va="bottom",
                             fontsize=fs(11), zorder=6)
+
+    if not points and labels:
+        for idx, (equation, y, color) in enumerate(plotted_curves):
+            if idx >= len(labels):
+                break
+            visible = np.where(
+                np.isfinite(y)
+                & (y >= y_range[0])
+                & (y <= y_range[1])
+                & (x >= x_range[0] + (x_range[1] - x_range[0]) * 0.58)
+            )[0]
+            if visible.size == 0:
+                visible = np.where(np.isfinite(y) & (y >= y_range[0]) & (y <= y_range[1]))[0]
+            if visible.size == 0:
+                continue
+            pos = int(visible[min(len(visible) - 1, max(0, int(len(visible) * 0.72)))])
+            ax.text(x[pos], y[pos], labels[idx], color=color, fontsize=fs(10),
+                    ha="left", va="center", zorder=7)
 
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
