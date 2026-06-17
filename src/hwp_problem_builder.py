@@ -136,6 +136,25 @@ INLINE_MATH_PATTERN = re.compile(
     r")"
 )
 
+ROOT_MATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])("
+    r"\d*\s*(?:\u221a|√)\s*(?:\([^()\n]+\)|[A-Za-z0-9]+)"
+    r"|(?:sqrt|root)\s*\([^()\n]+\)"
+    r"|루트\s*\(?\s*[A-Za-z0-9]+\s*\)?"
+    r")",
+    re.IGNORECASE,
+)
+
+CONTEXT_LETTER_MATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])("
+    r"[A-Z]\s*\(\s*[^(),\n]+\s*,\s*[^(),\n]+\s*\)"
+    r"|\(\s*[A-Za-z0-9+\-*/^ ]+\s*,\s*[A-Za-z0-9+\-*/^ ]+\s*\)"
+    r"|[A-Z]{2,8}(?=[가-힣]|[^A-Za-z0-9]|$)"
+    r"|[A-Za-z](?=(?:축|좌표|절편|값|의|는|은|이|가|을|를|와|과|에서|에|로|으로|보다|라|라고|"
+    r"km|cm|mm|m|L|분|초|개|번)(?![A-Za-z]))"
+    r")"
+)
+
 
 AUTO_MATH_PATTERN = re.compile(
     r"(?<![A-Za-z0-9가-힣])("
@@ -143,7 +162,7 @@ AUTO_MATH_PATTERN = re.compile(
     r"|"
     r"(?:"
     r"(?=[A-Za-z0-9(.\-+])"
-    r"[A-Za-z0-9²³⁴√^+\-*/=×÷<>≤≥≠±().,\s]+"
+    r"[A-Za-z0-9²³⁴√^+\-*/=×÷<>≤≥≠±().\s]+"
     r")"
     r")"
 )
@@ -179,22 +198,37 @@ def trim_auto_formula(value):
 def append_text_with_inline_math(tokens, text):
     cursor = 0
     while cursor < len(text):
+        root_match = ROOT_MATH_PATTERN.search(text, cursor)
         auto_match = AUTO_MATH_PATTERN.search(text, cursor)
         inline_match = INLINE_MATH_PATTERN.search(text, cursor)
-        matches = [m for m in (auto_match, inline_match) if m]
+        context_match = CONTEXT_LETTER_MATH_PATTERN.search(text, cursor)
+        matches = [m for m in (root_match, auto_match, inline_match, context_match) if m]
         if not matches:
             tokens.append(Token("text", text[cursor:]))
             break
 
-        match = min(matches, key=lambda item: item.start())
+        def match_priority(item):
+            if item.re is ROOT_MATH_PATTERN:
+                return 0
+            if item.re is AUTO_MATH_PATTERN:
+                return 1
+            return 2
+
+        sorted_matches = sorted(matches, key=lambda item: (item.start(), match_priority(item)))
+        match = None
+        for candidate in sorted_matches:
+            candidate_value = trim_auto_formula(candidate.group(1))
+            if candidate.re is AUTO_MATH_PATTERN and not is_auto_formula_candidate(candidate_value):
+                continue
+            match = candidate
+            break
+        if match is None:
+            tokens.append(Token("text", text[cursor : cursor + 1]))
+            cursor += 1
+            continue
         raw_value = match.group(1)
         formula = trim_auto_formula(raw_value)
         is_auto = match.re is AUTO_MATH_PATTERN
-        if is_auto and not is_auto_formula_candidate(formula):
-            next_cursor = match.start() + max(1, len(raw_value))
-            tokens.append(Token("text", text[cursor:next_cursor]))
-            cursor = next_cursor
-            continue
 
         leading = raw_value[: len(raw_value) - len(raw_value.lstrip())]
         trailing = raw_value[len(raw_value.rstrip()) :]
@@ -216,7 +250,7 @@ def parse_tokens_from_number(text, fallback_image_number):
         r"|"
         r"\[이미지\s*필요\s*(?:\((\d+)\)|(\d+))?\s*:[\s\S]*?\]"
         r"|\[IMAGE_PROMPT\s*(?:\((\d+)\)|(\d+))?\s*:[\s\S]*?\]"
-        r"|\[수식\s*:\s*([\s\S]*?)\]"
+        r"|\[(?:수식|formula)\s*:\s*([\s\S]*?)\]"
         r")",
         re.IGNORECASE,
     )
@@ -296,6 +330,36 @@ def convert_formula_to_hwp(value):
     }
     for source, target in unicode_replacements.items():
         text = text.replace(source, target)
+    text = re.sub(
+        r"(?<![A-Za-z])(\d*)\s*(?:\u221a|√)\s*\(([^()]+)\)",
+        lambda match: (
+            (match.group(1) + " " if match.group(1) else "")
+            + "sqrt {"
+            + match.group(2).strip()
+            + "}"
+        ),
+        text,
+    )
+    text = re.sub(
+        r"(?<![A-Za-z])(\d*)\s*(?:\u221a|√)\s*([A-Za-z0-9]+)",
+        lambda match: (
+            (match.group(1) + " " if match.group(1) else "")
+            + "sqrt {"
+            + match.group(2)
+            + "}"
+        ),
+        text,
+    )
+    text = re.sub(
+        r"(?i)(?:root|sqrt)\s*\(([^()]+)\)",
+        lambda match: "sqrt {" + match.group(1).strip() + "}",
+        text,
+    )
+    text = re.sub(
+        r"(?:루트)\s*\(?\s*([A-Za-z0-9]+)\s*\)?",
+        lambda match: "sqrt {" + match.group(1).strip() + "}",
+        text,
+    )
     text = re.sub(
         r"(?<![A-Za-z])(\d*)\s*\u221a\s*\(([^()]+)\)",
         lambda match: (
