@@ -1797,7 +1797,8 @@ function getImagePromptBlockError_(block, index) {
       moving_point_rectangle_trapezoid: ['rectangle_width', 'rectangle_height', 'point_speed'],
       linear_vertical_line_position: ['x_value'],
       linear_two_lines_labeled_points: ['equation1', 'equation2', 'point_a_x', 'point_b_x'],
-      linear_two_lines_xaxis_square: ['equation_left', 'equation_right']
+      linear_two_lines_xaxis_square: ['equation_left', 'equation_right'],
+      line_to_parabola_quadrant_match: ['line_equation', 'parabola_form']
     };
     const requiredFields = requiredTemplateFields[template] || [];
     const missingFields = requiredFields.filter(field => {
@@ -1917,13 +1918,19 @@ function hasUnresolvedImagePromptVariables_(block, template) {
     pi: true,
     abs: true
   };
+  const isEquationLikeField = key => {
+    return key === 'equations'
+      || key.indexOf('equation') === 0
+      || key === 'line_equation'
+      || key === 'parabola_form';
+  };
   return String(block || '').split(/\r?\n/).some(line => {
     const match = line.match(/^\s*([a-z_][a-z0-9_]*)\s*=\s*(.*?)\s*$/i);
     if (!match) return false;
     const key = String(match[1] || '').toLowerCase();
     if (key === 'template' || key === 'type' || key === 'parameter' || ignoredFields[key]) return false;
     const value = String(match[2] || '').replace(/\b[A-Z]\s*(?=\()/g, '');
-    if (key === 'equations' || key.indexOf('equation') === 0) {
+    if (isEquationLikeField(key)) {
       const unresolvedEquationText = value
         .replace(/\b(?:sqrt|sin|cos|tan|log|ln|pi|abs)\b/gi, '')
         .replace(/[xy]/gi, '')
@@ -1933,8 +1940,7 @@ function hasUnresolvedImagePromptVariables_(block, template) {
     const words = value.match(/[A-Za-z]+/g) || [];
     return words.some(word => {
       const normalized = word.toLowerCase();
-      if ((key === 'equations' || key.indexOf('equation') === 0)
-          && allowedEquationLetters[normalized]) return false;
+      if (isEquationLikeField(key) && allowedEquationLetters[normalized]) return false;
       return /^[a-z]$/i.test(word);
     });
   });
@@ -6118,6 +6124,7 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
     '- 사각형이면 네 꼭짓점의 순서를 명시하고 segments=AB,BC,CD,DA 또는 polygon=A,B,C,D를 적어라.',
     '- multiple_choice_parabola_position은 choices=y=식1; y=식2; y=식3; y=식4; y=식5 형식만 사용하라.',
     '- choices에 JSON 배열, 대괄호, 따옴표, 설명 문장, 그래프 성질 보기를 넣지 마라. 반드시 실제 이차함수 식 5개만 넣어라.',
+    '- line_to_parabola_quadrant_match는 line_equation=y=숫자식, parabola_form=y=숫자식만 사용하라. a, b, k, p, q 같은 미정계수를 절대 남기지 마라.',
     '- 세 반원 그림은 반드시 template=three_semicircles, diameter=전체 지름의 실제 숫자, split=점 C까지의 실제 숫자를 사용하라. diameter_AB, diameter_large, radius_AC 같은 임의 키를 만들지 마라.',
     '- 사분원 삼각비 그림은 반드시 template=unit_quarter_circle_trig, angle=각도의 실제 숫자를 사용하라.',
     '- 단일 포물선은 multiple_choice_parabola_position 또는 parabola_family_origin을 사용하지 마라. template=parabola_basic_shape과 equation=숫자가 확정된 식을 사용하라.',
@@ -6408,6 +6415,7 @@ function buildPastExamImageRepairPrompt_(generatedText, errorMessage) {
     '- 사각형은 네 꼭짓점을 둘레 순서로 적고 segments=AB,BC,CD,DA 또는 polygon=A,B,C,D를 반드시 넣어라.',
     '- multiple_choice_parabola_position은 choices=y=식1; y=식2; y=식3; y=식4; y=식5 형식만 사용하라.',
     '- choices에 JSON 배열, 대괄호, 따옴표, 설명 문장, 그래프 성질 보기를 넣지 마라. 실제 이차함수 식은 정확히 5개여야 한다.',
+    '- line_to_parabola_quadrant_match는 line_equation=y=숫자식, parabola_form=y=숫자식만 사용하라. a, b, k, p, q 같은 미정계수를 절대 남기지 마라.',
     '- 세 반원 그림은 template=three_semicircles, diameter=실제 숫자, split=실제 숫자만 사용하라. 다른 키 이름을 만들지 마라.',
     '- 사분원 삼각비 그림은 template=unit_quarter_circle_trig, angle=실제 숫자를 사용하라.',
     '- 단일 포물선은 template=parabola_basic_shape, equation=숫자가 확정된 식을 사용하라.',
