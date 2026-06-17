@@ -137,15 +137,75 @@ INLINE_MATH_PATTERN = re.compile(
 )
 
 
+AUTO_MATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9가-힣])("
+    r"(?:[-+]?\d+\s*/\s*[-+]?\d+)"
+    r"|"
+    r"(?:"
+    r"(?=[A-Za-z0-9(.\-+])"
+    r"[A-Za-z0-9²³⁴√^+\-*/=×÷<>≤≥≠±().,\s]+"
+    r")"
+    r")"
+)
+
+
+def is_auto_formula_candidate(value):
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return False
+    if re.fullmatch(r"[-+]?\d+\s*/\s*[-+]?\d+", text):
+        return True
+    if not re.search(r"[A-Za-z]", text):
+        return False
+    if re.search(r"[=<>≤≥≠]", text):
+        return True
+    if re.search(r"[²³⁴√^]", text):
+        return True
+    if re.search(r"\d\s*[A-Za-z]|[A-Za-z]\s*\d", text):
+        return True
+    if re.search(r"[+\-*/×÷]", text) and len(text) > 1:
+        return True
+    return False
+
+
+def trim_auto_formula(value):
+    text = str(value or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^[,;:]+", "", text).strip()
+    text = re.sub(r"[,;:]+$", "", text).strip()
+    return text
+
+
 def append_text_with_inline_math(tokens, text):
     cursor = 0
-    for match in INLINE_MATH_PATTERN.finditer(text):
+    while cursor < len(text):
+        auto_match = AUTO_MATH_PATTERN.search(text, cursor)
+        inline_match = INLINE_MATH_PATTERN.search(text, cursor)
+        matches = [m for m in (auto_match, inline_match) if m]
+        if not matches:
+            tokens.append(Token("text", text[cursor:]))
+            break
+
+        match = min(matches, key=lambda item: item.start())
+        raw_value = match.group(1)
+        formula = trim_auto_formula(raw_value)
+        is_auto = match.re is AUTO_MATH_PATTERN
+        if is_auto and not is_auto_formula_candidate(formula):
+            next_cursor = match.start() + max(1, len(raw_value))
+            tokens.append(Token("text", text[cursor:next_cursor]))
+            cursor = next_cursor
+            continue
+
+        leading = raw_value[: len(raw_value) - len(raw_value.lstrip())]
+        trailing = raw_value[len(raw_value.rstrip()) :]
+        formula_start = match.start() + len(leading)
+        formula_end = match.end() - len(trailing)
         if match.start() > cursor:
-            tokens.append(Token("text", text[cursor : match.start()]))
-        tokens.append(Token("formula", match.group(1)))
-        cursor = match.end()
-    if cursor < len(text):
-        tokens.append(Token("text", text[cursor:]))
+            tokens.append(Token("text", text[cursor : formula_start]))
+        elif leading:
+            tokens.append(Token("text", leading))
+        tokens.append(Token("formula", formula))
+        cursor = formula_end
 
 
 def parse_tokens_from_number(text, fallback_image_number):
@@ -222,6 +282,41 @@ def convert_formula_to_hwp(value):
     if not text:
         return ""
 
+    unicode_replacements = {
+        "\u00b2": "^{2}",
+        "\u00b3": "^{3}",
+        "\u2074": "^{4}",
+        "\u00d7": "times",
+        "\u00f7": "div",
+        "\u00b1": " plusminus ",
+        "\u2264": "<=",
+        "\u2265": ">=",
+        "\u2260": "!=",
+        "\u2212": "-",
+    }
+    for source, target in unicode_replacements.items():
+        text = text.replace(source, target)
+    text = re.sub(
+        r"(?<![A-Za-z])(\d*)\s*\u221a\s*\(([^()]+)\)",
+        lambda match: (
+            (match.group(1) + " " if match.group(1) else "")
+            + "sqrt {"
+            + match.group(2).strip()
+            + "}"
+        ),
+        text,
+    )
+    text = re.sub(
+        r"(?<![A-Za-z])(\d*)\s*\u221a\s*([A-Za-z0-9]+)",
+        lambda match: (
+            (match.group(1) + " " if match.group(1) else "")
+            + "sqrt {"
+            + match.group(2)
+            + "}"
+        ),
+        text,
+    )
+
     replacements = {
         "²": "^{2}",
         "³": "^{3}",
@@ -267,6 +362,15 @@ def convert_formula_to_hwp(value):
     def fraction_repl(match):
         return "{" + match.group(1) + "} over {" + match.group(2) + "}"
 
+    text = re.sub(
+        r"\(([^()\n]+)\)\s*/\s*([A-Za-z0-9]+)",
+        lambda match: "{"
+        + match.group(1).strip()
+        + "} over {"
+        + match.group(2).strip()
+        + "}",
+        text,
+    )
     return re.sub(
         r"(?<![\w}])([A-Za-z0-9]+)\s*/\s*([A-Za-z0-9]+)(?![\w{])",
         fraction_repl,
