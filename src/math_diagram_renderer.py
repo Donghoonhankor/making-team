@@ -454,6 +454,7 @@ def render_past_exam_image(spec, output_path):
         if value is None:
             value = str(overlay.get("original", "")).strip()
             missing.append(name)
+        value = format_pil_overlay_text(value)
         try:
             box = tuple(int(float(item)) for item in overlay.get("box", []))
         except (TypeError, ValueError):
@@ -473,6 +474,51 @@ def render_past_exam_image(spec, output_path):
     if missing:
         return ["past_exam_image used original values for missing overlays: " + ", ".join(missing)]
     return []
+
+
+def format_pil_overlay_text(value):
+    text = str(value or "")
+    vulgar_fractions = {
+        "1/2": "½",
+        "1/3": "⅓",
+        "2/3": "⅔",
+        "1/4": "¼",
+        "3/4": "¾",
+        "1/5": "⅕",
+        "2/5": "⅖",
+        "3/5": "⅗",
+        "4/5": "⅘",
+        "1/6": "⅙",
+        "5/6": "⅚",
+        "1/8": "⅛",
+        "3/8": "⅜",
+        "5/8": "⅝",
+        "7/8": "⅞",
+    }
+    for source, target in sorted(vulgar_fractions.items(), key=lambda item: -len(item[0])):
+        text = re.sub(rf"(?<![\d/]){re.escape(source)}(?![\d/])", target, text)
+    superscripts = str.maketrans({
+        "0": "⁰",
+        "1": "¹",
+        "2": "²",
+        "3": "³",
+        "4": "⁴",
+        "5": "⁵",
+        "6": "⁶",
+        "7": "⁷",
+        "8": "⁸",
+        "9": "⁹",
+        "-": "⁻",
+    })
+
+    def exponent_repl(match):
+        return match.group(1).translate(superscripts)
+
+    text = re.sub(r"\^\{([^{}]+)\}", exponent_repl, text)
+    text = re.sub(r"\^(-?\d+)", exponent_repl, text)
+    text = text.replace("**2", "²").replace("**3", "³").replace("**4", "⁴")
+    text = text.replace("*", "")
+    return text
 
 
 def parse_range(value, default):
