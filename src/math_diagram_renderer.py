@@ -621,18 +621,30 @@ def parse_equations(value):
         clean = re.sub(r"\{\s*label\s*=\s*[^{}]+?\s*\}", "", clean, flags=re.IGNORECASE).strip()
         if not clean:
             continue
-        if re.search(r"\b[a-wzA-WZ]\b", clean.replace("x", "").replace("y", "")):
+        unresolved_probe = clean.replace("x", "").replace("X", "").replace("y", "").replace("Y", "")
+        if re.search(r"\b[a-wzA-WZ]\b", unresolved_probe):
             equations.append({"raw": clean, "kind": "unsupported", "reason": "unresolved variable"})
             continue
         if clean.startswith("y=") or clean.startswith("y ="):
             rhs = clean.split("=", 1)[1]
             equations.append({"raw": clean, "kind": "y", "expr": normalize_expr(rhs)})
-        elif "=" in clean and re.search(r"\bx\b", clean):
+        elif "=" in clean and re.search(r"[xyXY]", clean):
             left, right = clean.split("=", 1)
-            if normalize_expr(right) == "0":
-                equations.append({"raw": "y = " + left.strip(), "kind": "y", "expr": normalize_expr(left)})
-            else:
-                equations.append({"raw": clean, "kind": "unsupported", "reason": "not explicit y= or x="})
+            try:
+                a, b, c = linear_coefficients(clean)
+                if abs(b) > 1e-9:
+                    equations.append({"raw": clean, "kind": "y", "expr": f"(-({a})*x-({c}))/({b})"})
+                elif abs(a) > 1e-9:
+                    equations.append({"raw": clean, "kind": "x", "value": -c / a})
+                elif normalize_expr(right) == "0":
+                    equations.append({"raw": "y = " + left.strip(), "kind": "y", "expr": normalize_expr(left)})
+                else:
+                    equations.append({"raw": clean, "kind": "unsupported", "reason": "not explicit y= or x="})
+            except Exception:
+                if normalize_expr(right) == "0":
+                    equations.append({"raw": "y = " + left.strip(), "kind": "y", "expr": normalize_expr(left)})
+                else:
+                    equations.append({"raw": clean, "kind": "unsupported", "reason": "not explicit y= or x="})
         elif clean.startswith("x=") or clean.startswith("x ="):
             rhs = clean.split("=", 1)[1]
             try:
