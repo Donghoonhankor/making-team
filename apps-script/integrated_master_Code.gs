@@ -1991,6 +1991,37 @@ function normalizeImagePromptBlocks_(text) {
   );
 }
 
+function normalizePastExamParabolaChoicePrompts_(text) {
+  return String(text || '').replace(
+    /\[IMAGE_PROMPT\s*:\s*([\s\S]*?)\]/gi,
+    (whole, body) => {
+      const template = getImagePromptFieldValue_(whole, 'template').toLowerCase();
+      const type = getImagePromptFieldValue_(whole, 'type').toLowerCase();
+      if (template === 'multiple_choice_parabola_position') return whole;
+      if (type !== 'coordinate_plane' && template !== 'parabola_basic_shape') return whole;
+
+      const equationText = getImagePromptFieldValue_(whole, 'equation')
+        || getImagePromptFieldValue_(whole, 'choices');
+      if (!equationText) return whole;
+
+      const choices = String(equationText || '')
+        .split(';')
+        .map(value => String(value || '')
+          .replace(/\{[^}]*\}/g, '')
+          .replace(/^\s*[①②③④⑤⑥⑦⑧⑨⑩]\s*/, '')
+          .trim())
+        .filter(Boolean);
+      const quadraticChoices = choices.filter(value => /x\s*(?:\^2|²)/i.test(value));
+      if (choices.length !== 5 || quadraticChoices.length !== 5) return whole;
+
+      return '[IMAGE_PROMPT:\n'
+        + 'template=multiple_choice_parabola_position\n'
+        + 'choices=' + choices.slice(0, 5).join('; ')
+        + '\n]';
+    }
+  );
+}
+
 function wrapLooseImagePromptBlocks_(text) {
   const lines = String(text || '').replace(/\r/g, '').split('\n');
   const output = [];
@@ -5605,6 +5636,7 @@ function validateGeneralProblemImageOutput_(text, exampleGroups) {
   let normalized = normalizeImagePromptBlocks_(
     String(text || '').replace(/\[그림\s*필요\s*:/g, '[이미지 필요:')
   );
+  normalized = normalizePastExamParabolaChoicePrompts_(normalized);
   normalized = normalizeGeneratedNumberingStyle_(normalized);
   const numberingIssue = getGeneratedNumberingStyleIssue_(normalized);
   if (numberingIssue) {
@@ -6184,6 +6216,7 @@ function validatePastExamProblemImageOutput_(text) {
   let normalized = normalizeImagePromptBlocks_(
     String(text || '').replace(/\[그림\s*필요\s*:/g, '[이미지 필요:')
   );
+  normalized = normalizePastExamParabolaChoicePrompts_(normalized);
   normalized = normalizeGeneratedNumberingStyle_(normalized);
   const numberingIssue = getGeneratedNumberingStyleIssue_(normalized);
   if (numberingIssue) {
