@@ -2022,6 +2022,43 @@ function normalizePastExamParabolaChoicePrompts_(text) {
   );
 }
 
+function normalizeGeometryImagePrompts_(text) {
+  return String(text || '').replace(
+    /\[IMAGE_PROMPT\s*:\s*([\s\S]*?)\]/gi,
+    (whole, body) => {
+      if (!/\btype\s*=\s*geometry\b/i.test(body)) return whole;
+
+      const hasShape = /\bshape\s*=/i.test(body);
+      const hasCoordinates = /\b(coordinates|center)\s*=/i.test(body);
+      const points = getImagePromptFieldValue_(whole, 'points')
+        || getImagePromptFieldValue_(whole, 'rectangle_points');
+      const center = getImagePromptFieldValue_(whole, 'center');
+      const radius = getImagePromptFieldValue_(whole, 'radius');
+      const polygon = getImagePromptFieldValue_(whole, 'polygon');
+      const segments = getImagePromptFieldValue_(whole, 'segments');
+
+      const additions = [];
+      if (!hasShape) {
+        if (center || radius) {
+          additions.push('shape=circle');
+        } else if (polygon || /(?:^|,)\s*[A-Za-z]\s*,\s*[A-Za-z]\s*,\s*[A-Za-z]\s*,\s*[A-Za-z]/.test(segments)) {
+          additions.push('shape=quadrilateral');
+        } else if (points) {
+          const pointCount = (String(points).match(/[A-Za-z]\s*\(/g) || []).length;
+          additions.push('shape=' + (pointCount >= 4 ? 'quadrilateral' : 'triangle'));
+        }
+      }
+      if (!hasCoordinates && points) {
+        additions.push('coordinates=' + points);
+      }
+
+      if (!additions.length) return whole;
+      return '[IMAGE_PROMPT:\n' + String(body || '').trim()
+        + '\n' + additions.join('\n') + '\n]';
+    }
+  );
+}
+
 function wrapLooseImagePromptBlocks_(text) {
   const lines = String(text || '').replace(/\r/g, '').split('\n');
   const output = [];
@@ -5637,6 +5674,7 @@ function validateGeneralProblemImageOutput_(text, exampleGroups) {
     String(text || '').replace(/\[그림\s*필요\s*:/g, '[이미지 필요:')
   );
   normalized = normalizePastExamParabolaChoicePrompts_(normalized);
+  normalized = normalizeGeometryImagePrompts_(normalized);
   normalized = normalizeGeneratedNumberingStyle_(normalized);
   const numberingIssue = getGeneratedNumberingStyleIssue_(normalized);
   if (numberingIssue) {
@@ -6217,6 +6255,7 @@ function validatePastExamProblemImageOutput_(text) {
     String(text || '').replace(/\[그림\s*필요\s*:/g, '[이미지 필요:')
   );
   normalized = normalizePastExamParabolaChoicePrompts_(normalized);
+  normalized = normalizeGeometryImagePrompts_(normalized);
   normalized = normalizeGeneratedNumberingStyle_(normalized);
   const numberingIssue = getGeneratedNumberingStyleIssue_(normalized);
   if (numberingIssue) {
