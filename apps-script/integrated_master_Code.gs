@@ -5709,6 +5709,7 @@ function handlePastExamProblems_(targetSheetName, targetRow, payload) {
   let generatedCount = Object.keys(completedNumbers).length;
   const referenceSources = getUsablePastExamGenerationSources_(sources);
   count = referenceSources.length;
+  payload.count = count;
   const chunkGroups = [];
   let searchNumber = 1;
   while (searchNumber <= count && chunkGroups.length < 6) {
@@ -6039,16 +6040,25 @@ function samplePastExamSources_(sources, maxItems) {
 }
 
 function getUsablePastExamGenerationSources_(sources) {
-  const usable = (sources || []).filter(source => {
-    if (!isPastExamImageIncluded_(source)) return true;
-    return Boolean(String(source['기출이미지ID'] || '').trim())
-      || Boolean(String(source['이미지템플릿'] || '').trim());
+  const list = sources || [];
+  const missing = list.filter(source => {
+    if (!isPastExamImageIncluded_(source)) return false;
+    return !String(source['기출이미지ID'] || '').trim()
+      && !String(source['이미지템플릿'] || '').trim();
   });
-  if (usable.length) return usable;
-  throw new Error(
-    '선택된 기출자료가 모두 이미지 문항인데 이미지템플릿/기출이미지ID가 비어 있습니다. '
-    + '기출문제은행에서 past_exam_image 매칭을 먼저 입력하세요.'
-  );
+  if (missing.length) {
+    const details = missing.map(source => {
+      return [
+        normalizeYear_(source['연도']) || '?',
+        String(source['문제번호'] || '?').trim()
+      ].join('년 ');
+    }).join(', ');
+    throw new Error(
+      '기출유사문항 1:1 생성 불가: 이미지 문항인데 이미지템플릿/기출이미지ID가 비어 있는 원본이 '
+      + missing.length + '개 있습니다. 누락 원본: ' + details
+    );
+  }
+  return list;
 }
 
 function isPastExamImageIncluded_(source) {
