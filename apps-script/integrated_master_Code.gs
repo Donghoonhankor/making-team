@@ -1961,14 +1961,61 @@ function isFiniteImagePromptNumber_(value) {
   return /^-?\d+(?:\.\d+)?$/.test(String(value || '').trim());
 }
 
+function getImagePromptKnownKeys_() {
+  return [
+    'template', 'type', 'shape', 'coordinates', 'center', 'radius', 'points',
+    'rectangle_points', 'segments', 'segment', 'polygon', 'polygons', 'region',
+    'connect', 'connections', 'edges', 'equation', 'equations', 'equation1',
+    'equation2', 'equation_top', 'equation_bottom', 'equation_left',
+    'equation_right', 'line_equation', 'parabola_form', 'choices',
+    'x_range', 'y_range', 'x_value', 'x_left', 'x_right', 'y_bottom',
+    'y_axis_y', 'vertical_x', 'point_a_x', 'point_b_x', 'width', 'height',
+    'road_width', 'square_side', 'width_label', 'height_label',
+    'rectangle_width', 'rectangle_height', 'point_speed', 'point_p_speed',
+    'point_q_speed', 'vertical_leg', 'horizontal_leg', 'base', 'side',
+    'sides', 'stage_counts', 'speed', 'diameter', 'split', 'outer_diameter',
+    'left_inner_diameter', 'right_inner_diameter', 'outer_radius',
+    'inner_radius', 'angle', 'activities', 'calories_per_10min',
+    'parameter', 'parameter_values', 'slope_sign', 'y_intercept_sign',
+    'curve_label', 'source_id', 'past_exam_image_id', 'library_root'
+  ];
+}
+
+function normalizeImagePromptKeyValueLines_(body) {
+  const keyPattern = new RegExp(
+    '(?:^|[\\s,]+)(' + getImagePromptKnownKeys_().join('|') + ')\\s*=',
+    'ig'
+  );
+  return String(body || '').split(/\r?\n/).map(line => {
+    const positions = [];
+    let match;
+    while ((match = keyPattern.exec(line)) !== null) {
+      const keyOffset = match[0].search(/[A-Za-z_]/);
+      const position = match.index + Math.max(keyOffset, 0);
+      if (positions.indexOf(position) < 0) positions.push(position);
+    }
+    keyPattern.lastIndex = 0;
+    if (positions.length <= 1 || positions[0] !== 0) return line;
+
+    return positions.map((position, index) => {
+      const nextPosition = index + 1 < positions.length ? positions[index + 1] : line.length;
+      return line.slice(position, nextPosition).replace(/^[\s,]+/, '').replace(/,\s*$/, '').trim();
+    }).filter(Boolean).join('\n');
+  }).join('\n');
+}
+
 function normalizeImagePromptBlocks_(text) {
   const canonical = wrapLooseImagePromptBlocks_(
     String(text || '').replace(
       /\[\s*IMAGE[_\s-]*PROMPT\s*(?:\(\s*\d+\s*\)|\d+)?\s*:\s*([\s\S]*?)\]/gi,
-      (whole, body) => '[IMAGE_PROMPT:\n' + String(body || '').trim() + '\n]'
+      (whole, body) => '[IMAGE_PROMPT:\n' + normalizeImagePromptKeyValueLines_(body).trim() + '\n]'
     )
   );
-  return canonical.replace(
+  const lineNormalized = canonical.replace(
+    /\[IMAGE_PROMPT\s*:\s*([\s\S]*?)\]/gi,
+    (whole, body) => '[IMAGE_PROMPT:\n' + normalizeImagePromptKeyValueLines_(body).trim() + '\n]'
+  );
+  return lineNormalized.replace(
     /\[IMAGE_PROMPT\s*:\s*([\s\S]*?)\]/gi,
     (whole, body) => {
       if (!/\btype\s*=\s*coordinate_plane\b/i.test(body)) return whole;
