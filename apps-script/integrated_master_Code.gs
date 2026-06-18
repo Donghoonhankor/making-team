@@ -1986,7 +1986,11 @@ function normalizeImagePromptKeyValueLines_(body) {
     '(?:^|[\\s,]+)(' + getImagePromptKnownKeys_().join('|') + ')\\s*=',
     'ig'
   );
-  return String(body || '').split(/\r?\n/).map(line => {
+  const commaNormalized = String(body || '').replace(
+    /,\s*([A-Za-z_][A-Za-z0-9_]*)\s*=/g,
+    '\n$1='
+  );
+  return commaNormalized.split(/\r?\n/).map(line => {
     const positions = [];
     let match;
     while ((match = keyPattern.exec(line)) !== null) {
