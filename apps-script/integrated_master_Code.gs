@@ -6040,25 +6040,7 @@ function samplePastExamSources_(sources, maxItems) {
 }
 
 function getUsablePastExamGenerationSources_(sources) {
-  const list = sources || [];
-  const missing = list.filter(source => {
-    if (!isPastExamImageIncluded_(source)) return false;
-    return !String(source['기출이미지ID'] || '').trim()
-      && !String(source['이미지템플릿'] || '').trim();
-  });
-  if (missing.length) {
-    const details = missing.map(source => {
-      return [
-        normalizeYear_(source['연도']) || '?',
-        String(source['문제번호'] || '?').trim()
-      ].join('년 ');
-    }).join(', ');
-    throw new Error(
-      '기출유사문항 1:1 생성 불가: 이미지 문항인데 이미지템플릿/기출이미지ID가 비어 있는 원본이 '
-      + missing.length + '개 있습니다. 누락 원본: ' + details
-    );
-  }
-  return list;
+  return sources || [];
 }
 
 function isPastExamImageIncluded_(source) {
@@ -6076,15 +6058,9 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
     const pastExamImageId = String(source['기출이미지ID'] || '').trim();
     const explicitTemplate = String(source['이미지템플릿'] || '').trim();
     const explicitRequiredFields = String(source['이미지필수항목'] || '').trim();
-    const templateHint = pastExamImageId
-      ? {
-          template: 'past_exam_image',
-          requiredFields: 'source_id' + (explicitRequiredFields ? ', ' + explicitRequiredFields : ''),
-          pastExamImageId: pastExamImageId
-        }
-      : explicitTemplate
-        ? { template: explicitTemplate, requiredFields: explicitRequiredFields }
-        : findExistingImageTemplate_([
+    const templateHint = explicitTemplate
+      ? { template: explicitTemplate, requiredFields: explicitRequiredFields }
+      : findExistingImageTemplate_([
           source['상위단원'],
           source['하위단원'],
           source['문제유형'],
@@ -6104,10 +6080,10 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
     '해설: ' + String(source['해설'] || ''),
     '도형/그래프 포함: ' + String(source['도형그래프포함여부'] || ''),
     '이미지설명: ' + String(source['이미지설명'] || ''),
-    '이미지템플릿: ' + (explicitTemplate || (pastExamImageId ? 'past_exam_image' : '')),
+    '이미지템플릿: ' + (explicitTemplate || (templateHint && templateHint.template) || ''),
     '이미지필수항목: ' + explicitRequiredFields,
     '기출이미지ID: ' + pastExamImageId,
-    '이미지템플릿등록상태: ' + (pastExamImageId || explicitTemplate || !isPastExamImageIncluded_(source) ? 'OK' : 'MISSING'),
+    '이미지템플릿등록상태: ' + (explicitTemplate || (templateHint && templateHint.template) || !isPastExamImageIncluded_(source) ? 'OK' : 'REDRAW_REQUIRED'),
     '기존 템플릿 검색결과: ' + formatExistingTemplateHint_(templateHint)
     ].join('\n');
   }).join('\n\n');
@@ -6135,14 +6111,9 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
     '- 도형이나 그래프가 필요한 유형은 생성 문제에도 반드시 포함하라.',
     '- 도형이나 그래프는 반드시 [이미지 필요: ...] 형식으로 구체적으로 설명하라.',
     '- [그림 필요: ...] 표현은 절대 사용하지 마라.',
-    '- 이미지템플릿등록상태가 MISSING인 기출자료는 이미지 원본으로 선택하지 마라.',
+    '- 이미지템플릿등록상태가 REDRAW_REQUIRED이어도 원본 기출자료로 선택할 수 있다. 이 경우 문제본문과 이미지설명을 바탕으로 구현 템플릿 또는 type=coordinate_plane/type=geometry로 새로 그려라.',
     '- 선택한 원본 기출자료의 기존 템플릿 검색결과가 있으면 반드시 그 template과 필수 항목을 사용하라.',
-    '- 선택한 원본 기출자료에 기출이미지ID가 있으면 다른 템플릿을 절대 고르지 말고 반드시 template=past_exam_image를 사용하라.',
-    '- template=past_exam_image를 사용할 때는 source_id=기출이미지ID를 정확히 그대로 넣어라.',
-    '- template=past_exam_image의 이미지필수항목이 있으면 각 항목 이름을 key로 하여 새 문제에 맞는 새 값을 넣어라. 예: vertex_x=3',
-    '- template=past_exam_image에 넣는 새 변수값은 원본 그림의 기본값과 달라야 하며, 정수 또는 기약분수 문자열로 넣어라.',
-    '- template=past_exam_image의 변수값에 긴 소수나 근삿값을 넣지 마라. 분수가 필요하면 7/3처럼 적어라.',
-    '- template=past_exam_image의 이미지필수항목이 비어 있으면 source_id만 넣어 원본 구조를 그대로 사용하라.',
+    '- 기출유사문항에서는 template=past_exam_image를 사용하지 마라. 원본 이미지를 재사용하지 말고 구현된 도표렌더러 템플릿이나 type=coordinate_plane/type=geometry로 새로 그려라.',
     '- 템플릿 검색결과가 있는데 다른 template이나 범용 type으로 바꾸지 마라.',
     '- 자동 검색결과가 없을 때만 구현 템플릿 목록을 검토하고, 원본 그림 구조와 정확히 일치할 때만 사용하라.',
     '- 구현 템플릿 목록: ' + getImplementedImageTemplateNames_().join(', '),
@@ -6161,7 +6132,7 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
     '- 세 반원 그림은 반드시 template=three_semicircles, diameter=전체 지름의 실제 숫자, split=점 C까지의 실제 숫자를 사용하라. diameter_AB, diameter_large, radius_AC 같은 임의 키를 만들지 마라.',
     '- 사분원 삼각비 그림은 반드시 template=unit_quarter_circle_trig, angle=각도의 실제 숫자를 사용하라.',
     '- 단일 포물선은 multiple_choice_parabola_position 또는 parabola_family_origin을 사용하지 마라. template=parabola_basic_shape과 equation=숫자가 확정된 식을 사용하라.',
-    '- 기출유사문항에서는 template=parabola_family_origin을 사용하지 마라. 여러 포물선 계수 비교 그림은 반드시 확정 숫자식이 들어가는 다른 템플릿이나 past_exam_image를 사용하라.',
+    '- 기출유사문항에서는 template=parabola_family_origin과 template=past_exam_image를 사용하지 마라. 여러 포물선 계수 비교 그림은 반드시 확정 숫자식이 들어가는 다른 템플릿이나 type=coordinate_plane을 사용하라.',
     '- 포물선이 x축과 A, B에서 만나고 원점 O가 A와 B 사이에 표시되는 유형은 template=parabola_labeled_xintercepts를 사용하라. equation에는 조건으로 확정한 숫자 식을, curve_label에는 문제에 인쇄할 원래 식을 적어라.',
     '- 포물선의 x절편이 A, B이고 꼭짓점이 C인 삼각형은 template=parabola_xintercepts_vertex_triangle, equation=숫자가 확정된 식을 사용하라.',
     '- y축 위의 A와 포물선 위의 B, C, D가 평행사변형을 이루고 AD가 x축과 평행한 유형은 template=parabola_yaxis_xpositive_parallelogram, equation=숫자가 확정된 식, y_axis_y=A의 y좌표를 사용하라.',
@@ -6186,7 +6157,6 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
     '[이미지 필요: 새 수치가 반영된 도형 또는 그래프 설명]',
     '[IMAGE_PROMPT:',
     'template=기존_템플릿명',
-    'source_id=기출이미지ID(template=past_exam_image일 때만)',
     '필수항목=새_문제의_값',
     ']',
     '정답: ...',
@@ -6224,6 +6194,9 @@ function validatePastExamProblemImageOutput_(text) {
   }
   const imageCount = (normalized.match(/\[이미지\s*필요\s*:/g) || []).length;
   const blocks = normalized.match(/\[IMAGE_PROMPT\s*:\s*[\s\S]*?\]/gi) || [];
+  if (blocks.some(block => /\btemplate\s*=\s*past_exam_image\b/i.test(block))) {
+    throw new Error('기출 유사문항 이미지 템플릿 오류: template=past_exam_image는 사용하지 않습니다. 구현 템플릿 또는 type=coordinate_plane/type=geometry로 다시 그리세요.');
+  }
   if (blocks.length < imageCount) {
     throw new Error(
       '기출 유사문항 이미지 템플릿 누락: 이미지 문항 ' + imageCount
@@ -6439,8 +6412,8 @@ function buildPastExamImageRepairPrompt_(generatedText, errorMessage) {
     '- 선택된 원본 기출문항과 기존 템플릿 검색결과를 그대로 기준으로 삼아라. 다른 기출문항의 구조나 다른 템플릿을 섞지 마라.',
     '- 구현 템플릿 목록: ' + getImplementedImageTemplateNames_().join(', '),
     '- 기존 템플릿 검색결과에 template=...이 있으면 해당 템플릿과 필수 key=value를 반드시 사용하라.',
-    '- 기존 템플릿 검색결과가 template=past_exam_image이면 source_id=기출이미지ID를 반드시 유지하고 다른 template이나 type으로 바꾸지 마라.',
-    '- template=past_exam_image의 새 변수값은 원본 기본값과 달라야 하며, 정수 또는 기약분수 꼴로 작성하라.',
+    '- 기존 템플릿 검색결과가 template=past_exam_image여도 이를 유지하지 마라. 구현 템플릿 또는 type=coordinate_plane/type=geometry로 새로 그려라.',
+    '- template=past_exam_image는 사용하지 마라. 원본 이미지 재사용 방식은 폐기되었다.',
     '- IMAGE_PROMPT에 3.087918 같은 긴 소수와 근삿값을 넣지 마라. 분수는 7/3처럼 적어라.',
     '- 템플릿 검색결과가 있는데 편의상 type=coordinate_plane 또는 type=geometry로 바꾸지 마라.',
     '- 적합한 구현 템플릿이 없을 때만 type=geometry 또는 type=coordinate_plane을 사용하라.',
@@ -6454,7 +6427,7 @@ function buildPastExamImageRepairPrompt_(generatedText, errorMessage) {
     '- 세 반원 그림은 template=three_semicircles, diameter=실제 숫자, split=실제 숫자만 사용하라. 다른 키 이름을 만들지 마라.',
     '- 사분원 삼각비 그림은 template=unit_quarter_circle_trig, angle=실제 숫자를 사용하라.',
     '- 단일 포물선은 template=parabola_basic_shape, equation=숫자가 확정된 식을 사용하라.',
-    '- 기출유사문항 보정에서 template=parabola_family_origin을 사용하지 마라. 미정계수가 남기 쉬우므로 past_exam_image 또는 확정 숫자식 템플릿으로 바꿔라.',
+    '- 기출유사문항 보정에서 template=parabola_family_origin과 template=past_exam_image를 사용하지 마라. 미정계수가 남기 쉬우므로 확정 숫자식 템플릿이나 type=coordinate_plane으로 바꿔라.',
     '- 포물선의 x절편이 A, B이고 원점 O가 그 사이인 그림은 template=parabola_labeled_xintercepts, equation=숫자로 확정된 식, curve_label=문제에 표시할 식을 사용하라.',
     '- 포물선의 x절편 A, B와 꼭짓점 C를 이은 삼각형은 template=parabola_xintercepts_vertex_triangle과 equation을 사용하라.',
     '- y축 위의 A와 포물선 위의 B, C, D가 평행사변형을 이루는 그림은 template=parabola_yaxis_xpositive_parallelogram, equation, y_axis_y=A의 y좌표를 사용하라.',
