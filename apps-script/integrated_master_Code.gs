@@ -1900,7 +1900,9 @@ function getPastExamImageValueFormatError_(block, index) {
 }
 
 function hasUnresolvedImagePromptVariables_(block, template) {
-  if (String(template || '').toLowerCase() === 'past_exam_image') return false;
+  const normalizedTemplate = String(template || '').toLowerCase();
+  if (normalizedTemplate === 'past_exam_image') return false;
+  if (normalizedTemplate === 'multiple_choice_parabola_position') return false;
   const ignoredFields = {
     annotations: true,
     labels: true,
