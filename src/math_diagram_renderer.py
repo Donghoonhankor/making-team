@@ -677,6 +677,28 @@ def has_ambiguous_points(value):
     return bool(re.search(r"문제\s*본문|제시된\s*점|given", value or "", re.I))
 
 
+def parse_points(value):
+    if not value:
+        return []
+    lower_value = str(value).lower()
+    if "given" in lower_value or "problem" in lower_value:
+        return []
+    points = []
+    pattern = re.compile(
+        r"(?:(?P<prefix>[A-Za-z_][A-Za-z0-9_]*)\s*)?"
+        r"\(\s*(?P<x>-?\d+(?:\.\d+)?)\s*,\s*(?P<y>-?\d+(?:\.\d+)?)"
+        r"(?:\s*,\s*['\"]?(?P<suffix>[A-Za-z_][A-Za-z0-9_]*)['\"]?)?\s*\)"
+    )
+    for match in pattern.finditer(value):
+        label = match.group("prefix") or match.group("suffix") or ""
+        points.append({
+            "label": label,
+            "x": float(match.group("x")),
+            "y": float(match.group("y")),
+        })
+    return points
+
+
 def parse_labels(value):
     labels = []
     raw = value or ""
