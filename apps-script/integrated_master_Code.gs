@@ -2083,6 +2083,17 @@ function normalizeGeometryImagePrompts_(text) {
       const radius = getImagePromptFieldValue_(whole, 'radius');
       const polygon = getImagePromptFieldValue_(whole, 'polygon');
       const segments = getImagePromptFieldValue_(whole, 'segments');
+      const equation = getImagePromptFieldValue_(whole, 'equation')
+        || getImagePromptFieldValue_(whole, 'equations')
+        || getImagePromptFieldValue_(whole, 'equation1')
+        || getImagePromptFieldValue_(whole, 'equation2');
+
+      if (!hasCoordinates && equation) {
+        const convertedLines = String(body || '').split(/\r?\n/)
+          .map(line => line.replace(/\btype\s*=\s*geometry\b/i, 'type=coordinate_plane'))
+          .filter(line => !/^\s*shape\s*=/i.test(line));
+        return '[IMAGE_PROMPT:\n' + convertedLines.join('\n').trim() + '\n]';
+      }
 
       const additions = [];
       if (!hasShape) {
