@@ -5697,10 +5697,7 @@ function handlePastExamProblems_(targetSheetName, targetRow, payload) {
   const teacherSheet = getTeacherSheetForTask_(targetSheetName, payload);
   if (!teacherSheet) throw new Error('선생님 시트를 찾을 수 없습니다: ' + targetSheetName);
   const teacherHeaders = getHeaderMap_(teacherSheet);
-  const count = Number(payload.count || 0);
-  if (count < 1 || count > 60) {
-    throw new Error('기출유사문항 생성은 한 번에 1~60문제까지 가능합니다.');
-  }
+  let count = 0;
 
   const sources = lookupPastExamProblems_(payload);
   if (!sources.length) {
@@ -5710,7 +5707,8 @@ function handlePastExamProblems_(targetSheetName, targetRow, payload) {
   const progress = getPastExamProgressFile_(targetSheetName, payload);
   const completedNumbers = getCompletedProgressNumbers_(progress.file);
   let generatedCount = Object.keys(completedNumbers).length;
-  const referenceSources = samplePastExamSources_(getUsablePastExamGenerationSources_(sources), 60);
+  const referenceSources = getUsablePastExamGenerationSources_(sources);
+  count = referenceSources.length;
   const chunkGroups = [];
   let searchNumber = 1;
   while (searchNumber <= count && chunkGroups.length < 6) {
@@ -5725,7 +5723,12 @@ function handlePastExamProblems_(targetSheetName, targetRow, payload) {
     chunkGroups.push({
       count: chunkCount,
       startNumber: searchNumber,
-      prompt: buildPastExamProblemsPrompt_(payload, referenceSources, searchNumber, chunkCount)
+      prompt: buildPastExamProblemsPrompt_(
+        payload,
+        referenceSources.slice(searchNumber - 1, searchNumber - 1 + chunkCount),
+        searchNumber,
+        chunkCount
+      )
     });
     searchNumber += chunkCount;
   }
@@ -5766,6 +5769,7 @@ function handlePastExamProblems_(targetSheetName, targetRow, payload) {
     const response = responses[index];
     const requestIndex = Number.isFinite(response.requestIndex) ? response.requestIndex : index;
     const group = chunkGroups[requestIndex];
+    assertPastExamChunkProblemCount_(generatedPart, group.count);
     appendProgressTextChunk_(progress.file, generatedPart, group.count, group.startNumber);
   });
   generatedCount = countProgressChunkItems_(progress.file);
@@ -5808,6 +5812,7 @@ function savePartialPastExamResponses_(file, responses, chunkGroups, targetSheet
         [response.text],
         [group.prompt]
       );
+      assertPastExamChunkProblemCount_(generatedParts[0], group.count);
       appendProgressTextChunk_(
         file,
         generatedParts[0],
@@ -5818,6 +5823,19 @@ function savePartialPastExamResponses_(file, responses, chunkGroups, targetSheet
       // Invalid output is not checkpointed; only this group will be requested again.
     }
   });
+}
+
+function assertPastExamChunkProblemCount_(text, expectedCount) {
+  const expected = Number(expectedCount || 0);
+  const actual = countGeneratedProblemHeadings_(text);
+  if (expected > 0 && actual !== expected) {
+    throw new Error('기출유사문항 1:1 생성 개수 불일치: 요청 ' + expected + '문항, 응답 ' + actual + '문항');
+  }
+}
+
+function countGeneratedProblemHeadings_(text) {
+  const matches = String(text || '').match(/^\s*문항\s*\d+\s*[.)]/gm) || [];
+  return matches.length;
 }
 
 function getPastExamProgressFile_(targetSheetName, payload) {
@@ -6087,6 +6105,10 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
   return [
     '너는 중학교 수학 시험 문항을 제작하는 교사다.',
     '아래에 제공된 지정 학교의 선택 연도 기출자료만 참고하여 유사문항을 생성하라.',
+    '- 참고자료 1개당 유사문항을 정확히 1개만 생성하라.',
+    '- 이번 묶음에 제공된 참고자료 수와 출력 문항 수는 반드시 같아야 한다.',
+    '- 참고자료 순서를 유지하여 첫 번째 참고자료는 이번 묶음 시작번호, 두 번째 참고자료는 다음 번호로 출력하라.',
+    '- 어떤 참고자료도 건너뛰거나, 하나의 참고자료에서 2문항 이상 생성하지 마라.',
     '절대 규칙:',
     getStandardProblemNumberingPromptRules_().join('\n'),
     '- 아래 기출자료에 실제로 나타난 단원과 문제유형만 사용하라.',
@@ -6170,6 +6192,8 @@ function buildPastExamProblemsPrompt_(payload, sources, startNumber, count) {
     '시험구분: ' + payload.examType,
     '이번 묶음 문항번호: ' + startNumber + '번부터 ' + (startNumber + count - 1) + '번',
     '이번 묶음 생성 수: ' + count,
+    '이번 묶음 참고자료 수: ' + sources.length,
+    '생성 원칙: 참고자료 1개당 유사문항 1개, 총 ' + sources.length + '문항',
     '',
     '참고할 수 있는 기출자료:',
     sourceText
