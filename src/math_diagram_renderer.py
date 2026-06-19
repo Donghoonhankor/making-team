@@ -917,6 +917,57 @@ def expand_range_for_points(x_range, y_range, points):
     return (xmin, xmax), (ymin, ymax)
 
 
+def relax_parabola_graph_view(spec, equations, points, x_range, y_range):
+    """Keep workbook-style parabola diagrams readable even with tight AI ranges."""
+    has_quadratic = any(
+        equation.get("kind") == "y" and "x**2" in equation.get("expr", "")
+        for equation in equations
+    )
+    if not has_quadratic or StringFalse(spec.get("schematic", "true")):
+        return x_range, y_range
+
+    topology_text = " ".join(
+        str(spec.get(key, "")).strip()
+        for key in ("segments", "segment", "edges", "connections", "connect", "polygon", "rectangle_points")
+        if str(spec.get(key, "")).strip()
+    )
+    if not points and not topology_text:
+        return x_range, y_range
+
+    xmin, xmax = x_range
+    ymin, ymax = y_range
+    x_span = max(xmax - xmin, 1.0)
+    y_span = max(ymax - ymin, 1.0)
+    point_ys = [0.0] + [point["y"] for point in points]
+    center_y = (min(point_ys) + max(point_ys)) / 2
+    if points:
+        point_xs = [0.0] + [point["x"] for point in points]
+        point_x_span = max(point_xs) - min(point_xs)
+        min_x_span = max(x_span, 12.0, point_x_span * 3.2)
+        if min_x_span > x_span:
+            center_x = (xmin + xmax) / 2
+            xmin = center_x - min_x_span / 2
+            xmax = center_x + min_x_span / 2
+            x_span = min_x_span
+
+    # School-test diagrams should show the shape first. A very tight vertical
+    # window makes parabolas look like a wall and hides the overall relation.
+    min_y_span = max(y_span, x_span * 1.35, (max(point_ys) - min(point_ys) + 1.0) * 2.0)
+    if min_y_span > y_span:
+        ymin = min(ymin, center_y - min_y_span / 2)
+        ymax = max(ymax, center_y + min_y_span / 2)
+
+    # If the rectangle/points sit right at the edge, give labels and the curve
+    # one more breath of space instead of cropping the educational cue.
+    margin = max(x_span * 0.06, 0.35)
+    if points:
+        xs = [point["x"] for point in points]
+        xmin = min(xmin, min(xs) - margin)
+        xmax = max(xmax, max(xs) + margin)
+
+    return (xmin, xmax), (ymin, ymax)
+
+
 def pad_range(lo, hi, ratio=0.15, minimum=1.0):
     if lo == hi:
         lo -= minimum
@@ -1183,6 +1234,8 @@ def point_item(label, x, y):
 
 def plot_labeled_points(ax, points):
     for point in points:
+        if str(point.get("label", "")).strip().upper() == "O" and abs(point["x"]) < 1e-9 and abs(point["y"]) < 1e-9:
+            continue
         ax.scatter([point["x"]], [point["y"]], color="black", s=marker_area(28), zorder=6)
         if point.get("label"):
             ax.annotate(point["label"], (point["x"], point["y"]), xytext=(4, 4),
@@ -3889,6 +3942,7 @@ def render_coordinate_plane(spec, output_path):
         equation for equation in equations
         if equation.get("kind") == "y" and "x**2" in equation.get("expr", "")
     ])
+    schematic_quadratic = quadratic_equation_count > 0 and not StringFalse(spec.get("schematic", "true"))
     exaggerate_quadratic_curves = (
         not spec.get("x_range")
         and not points
@@ -3900,7 +3954,25 @@ def render_coordinate_plane(spec, output_path):
         x_range = (-2.4, 2.4)
         if not spec.get("y_range"):
             y_range = (-8, 8)
-    x_range, y_range = auto_focus_ranges(spec, equations, points, x_range, y_range)
+    if schematic_quadratic and points and not spec.get("x_range") and not spec.get("y_range"):
+        focus_x = [0.0]
+        focus_y = [0.0]
+        for equation in equations:
+            if equation.get("kind") != "y" or "x**2" not in equation.get("expr", ""):
+                continue
+            try:
+                vertex = quadratic_vertex(quadratic_coefficients(equation))
+                focus_x.append(vertex[0])
+                focus_y.append(vertex[1])
+            except Exception:
+                pass
+        focus_x.extend(point["x"] for point in points)
+        focus_y.extend(point["y"] for point in points)
+        x_range = pad_range(min(focus_x), max(focus_x), 0.65, 4.0)
+        y_range = pad_range(min(focus_y), max(focus_y), 0.45, 4.0)
+    else:
+        x_range, y_range = auto_focus_ranges(spec, equations, points, x_range, y_range)
+    x_range, y_range = relax_parabola_graph_view(spec, equations, points, x_range, y_range)
     x_range, y_range = expand_range_for_points(x_range, y_range, points)
     warnings = []
     if not spec.get("equation", "").strip() and not points:
@@ -3938,6 +4010,14 @@ def render_coordinate_plane(spec, output_path):
             unsupported.append(f"{equation['raw']}: {equation.get('reason', 'unsupported')}")
 
     shade_enclosed_region(ax, equations)
+    segment_text = (
+        spec.get("segments", "")
+        or spec.get("segment", "")
+        or spec.get("edges", "")
+        or spec.get("connections", "")
+        or spec.get("connect", "")
+    )
+    draw_named_segments(ax, points, segment_text)
 
     horizontal_lines = []
     for equation in equations:
@@ -3952,13 +4032,26 @@ def render_coordinate_plane(spec, output_path):
             except Exception:
                 pass
 
+    labeled_points = [point for point in points if point.get("label")]
+    centroid_x = sum(point["x"] for point in labeled_points) / len(labeled_points) if labeled_points else 0
+    centroid_y = sum(point["y"] for point in labeled_points) / len(labeled_points) if labeled_points else 0
     for idx, point in enumerate(points):
-        ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(36), zorder=5)
         label = point["label"] or (labels[idx] if idx < len(labels) else "")
+        if label == "O" and abs(point["x"]) < 1e-9 and abs(point["y"]) < 1e-9:
+            continue
+        ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(36), zorder=5)
         if label:
             if abs(point["x"]) < 1e-9 and abs(point["y"]) < 1e-9 and label != "O":
                 ax.annotate(label, (point["x"], point["y"]), xytext=(-8, -12),
                             textcoords="offset points", ha="right", va="top",
+                            fontsize=fs(11), zorder=6)
+            elif label in ("A", "B", "C", "D") and len(labeled_points) >= 4:
+                xoff = 8
+                yoff = 8 if point["y"] >= centroid_y else -8
+                ax.annotate(label, (point["x"], point["y"]), xytext=(xoff, yoff),
+                            textcoords="offset points",
+                            ha="left",
+                            va="bottom" if yoff > 0 else "top",
                             fontsize=fs(11), zorder=6)
             else:
                 ax.annotate(label, (point["x"], point["y"]), xytext=(4, 4),
@@ -4062,6 +4155,82 @@ def render_geometry(spec, output_path):
         ax.set_ylim(min(ys) - margin, max(ys) + margin)
     ax.grid(True, alpha=0.2)
     ax.set_aspect("equal", adjustable="box")
+    fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
+    plt.close(fig)
+    return []
+
+
+def parse_segment_pairs(value):
+    pairs = []
+    raw = str(value or "").strip()
+    if not raw:
+        return pairs
+    items = split_semicolon_outside_parentheses(raw)
+    expanded = []
+    for item in items:
+        expanded.extend(split_csv_outside_parentheses(item))
+    for item in expanded:
+        text = item.strip()
+        if not text:
+            continue
+        if "-" in text:
+            parts = [part.strip() for part in text.split("-", 1)]
+        elif len(text) == 2 and text.isalpha():
+            parts = [text[0], text[1]]
+        else:
+            parts = [part.strip() for part in re.split(r"\s+", text) if part.strip()]
+        if len(parts) == 2:
+            pairs.append((parts[0], parts[1]))
+    return pairs
+
+
+def draw_named_segments(ax, points, segment_text, color="#666666", zorder=2.5):
+    by_label = {str(point.get("label", "")).strip(): point for point in points if point.get("label")}
+    for left, right in parse_segment_pairs(segment_text):
+        p1 = by_label.get(left)
+        p2 = by_label.get(right)
+        if not p1 or not p2:
+            continue
+        ax.plot([p1["x"], p2["x"]], [p1["y"], p2["y"]],
+                color=color, lw=lw(1.1), zorder=zorder)
+
+
+def render_rectangle_inner_slanted_quadrilateral(spec, output_path):
+    width = parse_length(spec.get("width"), 10)
+    height = parse_length(spec.get("height"), width)
+    top_point = parse_length(spec.get("top_point") or spec.get("ae") or spec.get("left_top_offset"), width * 0.2)
+    bottom_point = parse_length(spec.get("bottom_point") or spec.get("df") or spec.get("right_top_offset"), width * 0.5)
+    top_point = min(max(top_point, 0.0), height)
+    bottom_point = min(max(bottom_point, 0.0), height)
+
+    a = (0, height)
+    b = (0, 0)
+    c = (width, 0)
+    d = (width, height)
+    e = (0, height - top_point)
+    f = (width, height - bottom_point)
+    shade = [e, d, f, b]
+
+    fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
+    setup_plain_geometry_axes(ax, width, height)
+    ax.add_patch(plt.Rectangle((0, 0), width, height, facecolor="white", edgecolor="black", lw=lw(1.4)))
+    ax.fill([p[0] for p in shade], [p[1] for p in shade],
+            color="#68e3df", alpha=0.88, zorder=1)
+    ax.plot([e[0], d[0]], [e[1], d[1]], color="#1a9f3c", lw=lw(1.2), zorder=3)
+    ax.plot([b[0], f[0]], [b[1], f[1]], color="#1a9f3c", lw=lw(1.2), zorder=3)
+    ax.scatter([e[0], f[0]], [e[1], f[1]], color="red", s=marker_area(16), zorder=4)
+
+    label_specs = [
+        ("A", a, (-0.55, 0.35), "right", "bottom"),
+        ("B", b, (-0.55, -0.35), "right", "top"),
+        ("C", c, (0.35, -0.35), "left", "top"),
+        ("D", d, (0.35, 0.35), "left", "bottom"),
+        ("E", e, (-0.55, 0.0), "right", "center"),
+        ("F", f, (0.35, 0.0), "left", "center"),
+    ]
+    for label, point, offset, ha, va in label_specs:
+        ax.text(point[0] + offset[0], point[1] + offset[1], label,
+                ha=ha, va=va, fontsize=fs(11), math_fontfamily="stix")
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return []
@@ -4958,6 +5127,8 @@ def render_block(index, block, input_path, output_dir):
         unsupported = render_regular_polygon_chain_sequence(spec, output_path)
     elif template == "rectangle_side_point_triangle":
         unsupported = render_rectangle_side_point_triangle(spec, output_path)
+    elif template == "rectangle_inner_slanted_quadrilateral":
+        unsupported = render_rectangle_inner_slanted_quadrilateral(spec, output_path)
     elif template == "rectangle_cut_corner":
         unsupported = render_rectangle_cut_corner(spec, output_path)
     elif template == "rectangle_expanding_sides":
