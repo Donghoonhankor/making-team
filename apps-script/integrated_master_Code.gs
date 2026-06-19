@@ -1854,6 +1854,7 @@ function getImagePromptBlockError_(block, index) {
     const equationMatch = block.match(/\bequation\s*=\s*([^\r\n\]]+)/i);
     if (equationMatch) {
       const unresolved = String(equationMatch[1] || '')
+        .replace(/\{[^}]*\}/g, '')
         .replace(/\b(?:sqrt|sin|cos|tan|log|ln|pi|x|y)\b/gi, '')
         .match(/[A-Za-z]/);
       if (unresolved) {
@@ -1904,6 +1905,7 @@ function hasUnresolvedImagePromptVariables_(block, template) {
   const normalizedTemplate = String(template || '').toLowerCase();
   if (normalizedTemplate === 'past_exam_image') return false;
   if (normalizedTemplate === 'multiple_choice_parabola_position') return false;
+  if (normalizedTemplate === 'grid_number_table') return false;
   const ignoredFields = {
     annotations: true,
     labels: true,
