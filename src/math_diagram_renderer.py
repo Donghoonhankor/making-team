@@ -240,6 +240,9 @@ def parse_key_values(block):
     data = {}
     pending_key = ""
     pending_value = ""
+    last_collection_key = ""
+
+    collection_keys = {"points", "coordinates", "label_coords", "text_labels"}
 
     def is_balanced(text):
         pairs = {"(": ")", "[": "]", "{": "}"}
@@ -253,11 +256,26 @@ def parse_key_values(block):
         return not stack
 
     def commit_pending():
-        nonlocal pending_key, pending_value
+        nonlocal pending_key, pending_value, last_collection_key
         if pending_key:
             data[pending_key.strip()] = pending_value.strip()
+            if pending_key.strip().lower() in collection_keys:
+                last_collection_key = pending_key.strip()
             pending_key = ""
             pending_value = ""
+
+    def looks_like_collection_continuation(key, value):
+        key_text = str(key or "").strip()
+        value_text = str(value or "").strip()
+        if not last_collection_key:
+            return False
+        if last_collection_key.lower() in {"points", "coordinates", "label_coords"}:
+            return bool(re.match(r"^[A-Z][A-Z0-9_]{0,5}$", key_text)) and bool(
+                re.match(r"^\s*(?:\(|\[)?\s*-?\d+(?:\.\d+)?\s*,", value_text)
+            )
+        if last_collection_key.lower() == "text_labels":
+            return bool(re.match(r"^[A-Z][A-Z0-9_]{0,5}$", key_text))
+        return False
 
     for raw_line in block.replace("\\n", "\n").splitlines():
         line = raw_line.strip()
@@ -280,6 +298,10 @@ def parse_key_values(block):
             continue
         commit_pending()
         key, value = line.split(separator, 1)
+        if looks_like_collection_continuation(key, value):
+            data[last_collection_key] = (str(data.get(last_collection_key, "")).strip() + " " + line).strip()
+            continue
+        last_collection_key = ""
         pending_key = key
         pending_value = value
         if is_balanced(pending_value):
@@ -627,7 +649,7 @@ def normalize_expr(expr):
     text = re.sub(r"(\d)([xy])", r"\1*\2", text)
     text = re.sub(r"(\d)(\()", r"\1*\2", text)
     text = re.sub(r"(\))(\()", r"\1*\2", text)
-    text = re.sub(r"(\))([x\d])", r"\1*\2", text)
+    text = re.sub(r"(\))([xy\d])", r"\1*\2", text)
     text = re.sub(r"(x)(\()", r"\1*\2", text)
     return text
 
@@ -649,7 +671,9 @@ def parse_equations(value):
         items = split_csv_outside_parentheses(value)
     for item in items:
         clean = item.strip()
+        clean = clean.strip("'\"")
         clean = re.sub(r"\{\s*label\s*=\s*[^{}]+?\s*\}", "", clean, flags=re.IGNORECASE).strip()
+        clean = re.sub(r"\s+label\s*=\s*[^;,\n]+$", "", clean, flags=re.IGNORECASE).strip()
         if not clean:
             continue
         unresolved_probe = clean.replace("x", "").replace("X", "").replace("y", "").replace("Y", "")
@@ -716,16 +740,24 @@ def parse_points(value):
         return []
     points = []
     pattern = re.compile(
-        r"(?:(?P<prefix>[A-Za-z_][A-Za-z0-9_]*)\s*)?"
+        r"(?:(?P<prefix>[A-Za-z_][A-Za-z0-9_]*)\s*(?:=|:)?\s*)?"
         r"\(\s*(?P<x>-?\d+(?:\.\d+)?)\s*,\s*(?P<y>-?\d+(?:\.\d+)?)"
-        r"(?:\s*,\s*['\"]?(?P<suffix>[A-Za-z_][A-Za-z0-9_]*)['\"]?)?\s*\)"
+        r"(?:\s*,\s*['\"]?(?P<suffix>[A-Za-z_][A-Za-z0-9_]*)['\"]?)?(?:\s+[^)]*)?\s*\)"
+        r"\s*(?::\s*|label\s*=\s*|\{\s*)?(?P<postfix>[A-Za-z_][A-Za-z0-9_]*|-?\d+)?\s*\}?"
         r"|(?P<bracket_label>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*"
         r"\[\s*(?P<bracket_x>-?\d+(?:\.\d+)?)\s*,\s*(?P<bracket_y>-?\d+(?:\.\d+)?)\s*\]"
+        r"|\[\s*(?P<plain_bracket_x>-?\d+(?:\.\d+)?)\s*,\s*(?P<plain_bracket_y>-?\d+(?:\.\d+)?)\s*\]"
     )
     for match in pattern.finditer(value):
-        label = match.group("prefix") or match.group("suffix") or match.group("bracket_label") or ""
-        x_value = match.group("x") or match.group("bracket_x")
-        y_value = match.group("y") or match.group("bracket_y")
+        label = (
+            match.group("prefix")
+            or match.group("suffix")
+            or match.group("postfix")
+            or match.group("bracket_label")
+            or ""
+        )
+        x_value = match.group("x") or match.group("bracket_x") or match.group("plain_bracket_x")
+        y_value = match.group("y") or match.group("bracket_y") or match.group("plain_bracket_y")
         points.append({
             "label": label,
             "x": float(x_value),
@@ -736,11 +768,13 @@ def parse_points(value):
 
 def parse_labels(value):
     labels = []
-    raw = value or ""
+    raw = str(value or "").strip()
+    if raw.startswith("[") or raw.startswith("{"):
+        return labels
     items = split_semicolon_outside_parentheses(raw) if ";" in raw else split_csv_outside_parentheses(raw)
     for item in items:
         label = item.strip()
-        if not label or label.lower() == "none":
+        if not label or label.lower() == "none" or label.startswith("("):
             continue
         labels.append(label)
     return labels
@@ -751,7 +785,7 @@ def safe_eval(expr, x):
 
 
 def parse_y_equation(raw):
-    text = str(raw or "").strip()
+    text = str(raw or "").strip().strip("'\"")
     if text.startswith("y=") or text.startswith("y ="):
         return {
             "raw": text,
@@ -1952,15 +1986,21 @@ def render_two_parabolas_shared_vertex_intersections(spec, output_path):
 
 
 def render_line_to_parabola_quadrant_match(spec, output_path):
-    line_eq = parse_y_equation(spec.get("line_equation") or "y=x+1")
+    line_candidates = parse_equations(spec.get("line_equation") or "y=x+1")
+    line_eq = line_candidates[0] if line_candidates else parse_y_equation("y=x+1")
     parabola_eq = parse_y_equation(spec.get("parabola_equation") or spec.get("parabola_form") or "y=-(x+1)^2+1")
     x_range = parse_range(spec.get("x_range"), (-4, 4))
-    y_values = y_values_for_equations([line_eq, parabola_eq], x_range) + [0]
+    y_values = y_values_for_equations([parabola_eq], x_range) + [0]
+    if line_eq.get("kind") == "y":
+        y_values += y_values_for_equations([line_eq], x_range)
     y_range = pad_range(min(y_values), max(y_values), 0.18, 2.0)
     fig, ax = plt.subplots(figsize=FIGURE_SIZE_INCHES)
     setup_axes(ax, x_range, y_range)
     x = np.linspace(x_range[0], x_range[1], 1200)
-    ax.plot(x, safe_eval(line_eq["expr"], x), color="#555555", lw=lw(1.5), zorder=3)
+    if line_eq.get("kind") == "x":
+        ax.axvline(line_eq["value"], color="#555555", lw=lw(1.5), zorder=3)
+    else:
+        ax.plot(x, safe_eval(line_eq["expr"], x), color="#555555", lw=lw(1.5), zorder=3)
     ax.plot(x, safe_eval(parabola_eq["expr"], x), color="#1f77b4", lw=lw(2), zorder=3)
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
@@ -3934,17 +3974,6 @@ def validate_coordinate_plane_semantics(spec, equations, points):
         }
         for value in topology_values
     )
-    if len(points) >= 3 and not has_topology:
-        errors.append(
-            "coordinate_plane has 3 or more points but no segments/polygon/template; "
-            "refusing to render disconnected dots"
-        )
-    if has_topology and len([point for point in points if point.get("label")]) < 2:
-        errors.append(
-            "coordinate_plane topology needs named points such as A(1,2); "
-            "unlabeled coordinates cannot be connected reliably"
-        )
-
     y_equations = [equation for equation in equations if equation.get("kind") == "y"]
     if points and len(y_equations) == 1 and not has_topology:
         equation = y_equations[0]
@@ -4005,7 +4034,7 @@ def parabola_rectangle_perimeter_ranges(points):
 def render_coordinate_plane(spec, output_path):
     x_range = parse_range(spec.get("x_range"), (-6, 6))
     y_range = parse_range(spec.get("y_range"), (-10, 10))
-    equation_text = spec.get("equation", "")
+    equation_text = spec.get("equation", "") or spec.get("equations", "") or spec.get("line_equation", "")
     inline_curve_labels = [
         match.group(1).strip()
         for match in re.finditer(r"\{\s*label\s*=\s*([^{}]+?)\s*\}", str(equation_text), flags=re.IGNORECASE)
@@ -4056,7 +4085,7 @@ def render_coordinate_plane(spec, output_path):
     if rectangle_perimeter_diagram:
         x_range, y_range = parabola_rectangle_perimeter_ranges(points)
     warnings = []
-    if not spec.get("equation", "").strip() and not points:
+    if not str(equation_text).strip() and not points:
         warnings.append("coordinate_plane has no equation or concrete points")
     if has_ambiguous_points(spec.get("points", "")):
         warnings.append("points field is ambiguous")
@@ -4226,7 +4255,9 @@ def render_parabola_band_area(spec, output_path):
 
 
 def render_geometry(spec, output_path):
-    coords = parse_points(spec.get("coordinates", "") or spec.get("points", ""))
+    coordinate_points = parse_points(spec.get("coordinates", ""))
+    named_points = parse_points(spec.get("points", ""))
+    coords = named_points if len(named_points) > len(coordinate_points) else coordinate_points
     labels = parse_labels(spec.get("labels", ""))
 
     fig, ax = plt.subplots(figsize=GEOMETRY_SIZE_INCHES)
@@ -4256,9 +4287,25 @@ def render_geometry(spec, output_path):
                 or spec.get("connections", "")
                 or spec.get("connect", "")
             )
+            polygon_text = spec.get("polygon", "") or spec.get("polygons", "")
+            polygon_groups = []
+            if polygon_text:
+                for group in split_semicolon_outside_parentheses(polygon_text):
+                    names = [name.strip() for name in split_csv_outside_parentheses(group) if name.strip()]
+                    polygon = [by_label[name] for name in names if name in by_label]
+                    if len(polygon) >= 3:
+                        polygon_groups.append(polygon)
+                for polygon in polygon_groups:
+                    fill_value = str(spec.get("fill", "")).strip()
+                    if fill_value and not StringFalse(fill_value):
+                        ax.fill([p["x"] for p in polygon], [p["y"] for p in polygon],
+                                color="#d7e8f7", alpha=0.35, zorder=1)
+                    ax.plot([p["x"] for p in polygon + [polygon[0]]],
+                            [p["y"] for p in polygon + [polygon[0]]],
+                            color="#1f77b4", lw=lw(1.2), zorder=2)
             if segment_text:
                 draw_named_segments(ax, coords, segment_text, color="#1f77b4", zorder=2)
-            else:
+            elif not polygon_groups:
                 ax.plot(xs + [xs[0]], ys + [ys[0]], lw=lw(2))
         for idx, point in enumerate(coords):
             label = point["label"] or (labels[idx] if idx < len(labels) else "")
@@ -4309,6 +4356,17 @@ def parse_segment_pairs(value):
 
 
 def draw_named_segments(ax, points, segment_text, color="#666666", zorder=2.5):
+    coord_pattern = re.compile(r"\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)")
+    raw_items = split_semicolon_outside_parentheses(segment_text)
+    for raw_item in raw_items:
+        coords = [
+            (float(match.group(1)), float(match.group(2)))
+            for match in coord_pattern.finditer(raw_item)
+        ]
+        if len(coords) >= 2:
+            p1, p2 = coords[0], coords[1]
+            ax.plot([p1[0], p2[0]], [p1[1], p2[1]],
+                    color=color, lw=lw(1.1), zorder=zorder)
     by_label = {str(point.get("label", "")).strip(): point for point in points if point.get("label")}
     for left, right in parse_segment_pairs(segment_text):
         p1 = by_label.get(left)
