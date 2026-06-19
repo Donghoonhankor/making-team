@@ -943,7 +943,7 @@ def relax_parabola_graph_view(spec, equations, points, x_range, y_range):
     if points:
         point_xs = [0.0] + [point["x"] for point in points]
         point_x_span = max(point_xs) - min(point_xs)
-        min_x_span = max(x_span, 12.0, point_x_span * 3.2)
+        min_x_span = max(x_span, 13.5, point_x_span * 3.0)
         if min_x_span > x_span:
             center_x = (xmin + xmax) / 2
             xmin = center_x - min_x_span / 2
@@ -952,7 +952,7 @@ def relax_parabola_graph_view(spec, equations, points, x_range, y_range):
 
     # School-test diagrams should show the shape first. A very tight vertical
     # window makes parabolas look like a wall and hides the overall relation.
-    min_y_span = max(y_span, x_span * 1.35, (max(point_ys) - min(point_ys) + 1.0) * 2.0)
+    min_y_span = max(y_span, x_span * 2.45, (max(point_ys) - min(point_ys) + 1.0) * 3.4)
     if min_y_span > y_span:
         ymin = min(ymin, center_y - min_y_span / 2)
         ymax = max(ymax, center_y + min_y_span / 2)
