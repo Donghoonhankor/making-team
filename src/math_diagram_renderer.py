@@ -238,9 +238,35 @@ def parse_key_values(block):
         except (TypeError, ValueError, json.JSONDecodeError):
             pass
     data = {}
+    pending_key = ""
+    pending_value = ""
+
+    def is_balanced(text):
+        pairs = {"(": ")", "[": "]", "{": "}"}
+        stack = []
+        for char in str(text):
+            if char in pairs:
+                stack.append(pairs[char])
+            elif char in pairs.values():
+                if stack and stack[-1] == char:
+                    stack.pop()
+        return not stack
+
+    def commit_pending():
+        nonlocal pending_key, pending_value
+        if pending_key:
+            data[pending_key.strip()] = pending_value.strip()
+            pending_key = ""
+            pending_value = ""
+
     for raw_line in block.replace("\\n", "\n").splitlines():
         line = raw_line.strip()
         if not line:
+            continue
+        if pending_key and not is_balanced(pending_value):
+            pending_value += " " + line
+            if is_balanced(pending_value):
+                commit_pending()
             continue
         equals_index = line.find("=")
         colon_index = line.find(":")
@@ -252,8 +278,13 @@ def parse_key_values(block):
             separator = ":" if colon_index < equals_index else "="
         if not separator:
             continue
+        commit_pending()
         key, value = line.split(separator, 1)
-        data[key.strip()] = value.strip()
+        pending_key = key
+        pending_value = value
+        if is_balanced(pending_value):
+            commit_pending()
+    commit_pending()
     if "imageTemplate" in data and "template" not in data:
         data["template"] = data["imageTemplate"]
     return data
@@ -688,13 +719,17 @@ def parse_points(value):
         r"(?:(?P<prefix>[A-Za-z_][A-Za-z0-9_]*)\s*)?"
         r"\(\s*(?P<x>-?\d+(?:\.\d+)?)\s*,\s*(?P<y>-?\d+(?:\.\d+)?)"
         r"(?:\s*,\s*['\"]?(?P<suffix>[A-Za-z_][A-Za-z0-9_]*)['\"]?)?\s*\)"
+        r"|(?P<bracket_label>[A-Za-z_][A-Za-z0-9_]*)\s*:\s*"
+        r"\[\s*(?P<bracket_x>-?\d+(?:\.\d+)?)\s*,\s*(?P<bracket_y>-?\d+(?:\.\d+)?)\s*\]"
     )
     for match in pattern.finditer(value):
-        label = match.group("prefix") or match.group("suffix") or ""
+        label = match.group("prefix") or match.group("suffix") or match.group("bracket_label") or ""
+        x_value = match.group("x") or match.group("bracket_x")
+        y_value = match.group("y") or match.group("bracket_y")
         points.append({
             "label": label,
-            "x": float(match.group("x")),
-            "y": float(match.group("y")),
+            "x": float(x_value),
+            "y": float(y_value),
         })
     return points
 
@@ -4062,6 +4097,9 @@ def render_coordinate_plane(spec, output_path):
         or spec.get("edges", "")
         or spec.get("connections", "")
         or spec.get("connect", "")
+        or spec.get("polygon", "")
+        or spec.get("polygons", "")
+        or spec.get("rectangle_points", "")
     )
     draw_named_segments(ax, points, segment_text)
 
@@ -4249,6 +4287,12 @@ def parse_segment_pairs(value):
     expanded = []
     for item in items:
         expanded.extend(split_csv_outside_parentheses(item))
+    simple_labels = [item.strip() for item in expanded if item.strip()]
+    if len(simple_labels) >= 3 and all(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", item) for item in simple_labels):
+        return [
+            (simple_labels[index], simple_labels[(index + 1) % len(simple_labels)])
+            for index in range(len(simple_labels))
+        ]
     for item in expanded:
         text = item.strip()
         if not text:
