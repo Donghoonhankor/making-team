@@ -3931,6 +3931,42 @@ def validate_coordinate_plane_semantics(spec, equations, points):
     return errors
 
 
+def is_parabola_rectangle_perimeter_diagram(spec, equations, points):
+    labels = {str(point.get("label", "")).strip().upper() for point in points if point.get("label")}
+    if not {"A", "B", "C", "D", "O"}.issubset(labels):
+        return False
+    y_equations = [equation for equation in equations if equation.get("kind") == "y"]
+    if len(y_equations) != 1 or "x**2" not in y_equations[0].get("expr", ""):
+        return False
+    segment_text = str(
+        spec.get("segments", "")
+        or spec.get("segment", "")
+        or spec.get("edges", "")
+        or spec.get("connections", "")
+        or spec.get("connect", "")
+    ).replace(" ", "").upper()
+    required_edges = ("AB", "BC", "CD", "DA")
+    return all(edge in segment_text for edge in required_edges)
+
+
+def parabola_rectangle_perimeter_ranges(points):
+    rect_points = [
+        point for point in points
+        if str(point.get("label", "")).strip().upper() in {"A", "B", "C", "D"}
+    ]
+    xs = [point["x"] for point in rect_points]
+    ys = [point["y"] for point in rect_points]
+    left, right = min(xs), max(xs)
+    bottom, top = min(ys), max(ys)
+    width = max(right - left, 1.0)
+    height = max(top - bottom, 1.0)
+    # This problem type is read visually. Keep O, the rectangle, and the
+    # parabola shape large enough, instead of treating it like a data plot.
+    x_range = (min(0.0, left - width * 1.12), right + width * 0.58)
+    y_range = (min(0.0, bottom) - height * 0.42, top + height * 0.58)
+    return x_range, y_range
+
+
 def render_coordinate_plane(spec, output_path):
     x_range = parse_range(spec.get("x_range"), (-6, 6))
     y_range = parse_range(spec.get("y_range"), (-10, 10))
@@ -3944,6 +3980,7 @@ def render_coordinate_plane(spec, output_path):
     labels = parse_labels(spec.get("labels", "") or spec.get("curve_labels", ""))
     if not labels:
         labels = inline_curve_labels
+    rectangle_perimeter_diagram = is_parabola_rectangle_perimeter_diagram(spec, equations, points)
     y_equation_count = len([equation for equation in equations if equation.get("kind") == "y"])
     quadratic_equation_count = len([
         equation for equation in equations
@@ -3981,6 +4018,8 @@ def render_coordinate_plane(spec, output_path):
         x_range, y_range = auto_focus_ranges(spec, equations, points, x_range, y_range)
     x_range, y_range = relax_parabola_graph_view(spec, equations, points, x_range, y_range)
     x_range, y_range = expand_range_for_points(x_range, y_range, points)
+    if rectangle_perimeter_diagram:
+        x_range, y_range = parabola_rectangle_perimeter_ranges(points)
     warnings = []
     if not spec.get("equation", "").strip() and not points:
         warnings.append("coordinate_plane has no equation or concrete points")
@@ -4044,9 +4083,11 @@ def render_coordinate_plane(spec, output_path):
     centroid_y = sum(point["y"] for point in labeled_points) / len(labeled_points) if labeled_points else 0
     for idx, point in enumerate(points):
         label = point["label"] or (labels[idx] if idx < len(labels) else "")
-        if label == "O" and abs(point["x"]) < 1e-9 and abs(point["y"]) < 1e-9:
+        if label == "O" and abs(point["x"]) < 1e-9 and abs(point["y"]) < 1e-9 and not rectangle_perimeter_diagram:
             continue
-        if label in ("A", "B", "C", "D") and len(labeled_points) >= 4:
+        if rectangle_perimeter_diagram and label in ("A", "B", "C", "D", "O"):
+            ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(34), zorder=5)
+        elif label in ("A", "B", "C", "D") and len(labeled_points) >= 4:
             ax.scatter([point["x"]], [point["y"]], color="black", s=marker_area(10), zorder=5)
         else:
             ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(36), zorder=5)
