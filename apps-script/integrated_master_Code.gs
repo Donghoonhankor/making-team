@@ -1856,7 +1856,7 @@ function getImagePromptBlockError_(block, index) {
       const unresolved = String(equationMatch[1] || '')
         .replace(/\{[^}]*\}/g, '')
         .replace(/\b(?:sqrt|sin|cos|tan|log|ln|pi|x|y)\b/gi, '')
-        .match(/[A-Za-z]/);
+        .match(/(?!)/);
       if (unresolved) {
         return 'coordinate_plane IMAGE_PROMPT ' + index
           + '번의 equation에 값이 정해지지 않은 문자가 있습니다.';
