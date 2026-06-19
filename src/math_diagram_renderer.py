@@ -940,10 +940,14 @@ def relax_parabola_graph_view(spec, equations, points, x_range, y_range):
     y_span = max(ymax - ymin, 1.0)
     point_ys = [0.0] + [point["y"] for point in points]
     center_y = (min(point_ys) + max(point_ys)) / 2
+    y_equation_count = len([equation for equation in equations if equation.get("kind") == "y"])
     if points:
         point_xs = [0.0] + [point["x"] for point in points]
         point_x_span = max(point_xs) - min(point_xs)
-        min_x_span = max(x_span, 13.5, point_x_span * 3.0)
+        if y_equation_count <= 1 and len(points) >= 4:
+            min_x_span = max(x_span, 16.0, point_x_span * 3.8)
+        else:
+            min_x_span = max(x_span, 13.5, point_x_span * 3.0)
         if min_x_span > x_span:
             center_x = (xmin + xmax) / 2
             xmin = center_x - min_x_span / 2
@@ -952,7 +956,10 @@ def relax_parabola_graph_view(spec, equations, points, x_range, y_range):
 
     # School-test diagrams should show the shape first. A very tight vertical
     # window makes parabolas look like a wall and hides the overall relation.
-    min_y_span = max(y_span, x_span * 2.45, (max(point_ys) - min(point_ys) + 1.0) * 3.4)
+    if y_equation_count <= 1 and len(points) >= 4:
+        min_y_span = max(y_span, x_span * 2.45, (max(point_ys) - min(point_ys) + 1.0) * 4.0)
+    else:
+        min_y_span = max(y_span, x_span * 2.45, (max(point_ys) - min(point_ys) + 1.0) * 3.4)
     if min_y_span > y_span:
         ymin = min(ymin, center_y - min_y_span / 2)
         ymax = max(ymax, center_y + min_y_span / 2)
@@ -4039,7 +4046,10 @@ def render_coordinate_plane(spec, output_path):
         label = point["label"] or (labels[idx] if idx < len(labels) else "")
         if label == "O" and abs(point["x"]) < 1e-9 and abs(point["y"]) < 1e-9:
             continue
-        ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(36), zorder=5)
+        if label in ("A", "B", "C", "D") and len(labeled_points) >= 4:
+            ax.scatter([point["x"]], [point["y"]], color="black", s=marker_area(10), zorder=5)
+        else:
+            ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(36), zorder=5)
         if label:
             if abs(point["x"]) < 1e-9 and abs(point["y"]) < 1e-9 and label != "O":
                 ax.annotate(label, (point["x"], point["y"]), xytext=(-8, -12),
@@ -4144,17 +4154,46 @@ def render_geometry(spec, output_path):
     if coords:
         xs = [p["x"] for p in coords]
         ys = [p["y"] for p in coords]
-        ax.plot(xs + [xs[0]], ys + [ys[0]], lw=lw(2))
+        by_label = {str(point.get("label", "")).strip(): point for point in coords if point.get("label")}
+        label_set = set(by_label)
+        if {"A", "B", "C", "D", "E", "F"}.issubset(label_set) and str(spec.get("shape", "")).lower() == "quadrilateral":
+            a, b, c, d, e, f = (by_label[key] for key in ("A", "B", "C", "D", "E", "F"))
+            ax.plot([a["x"], b["x"], c["x"], d["x"], a["x"]],
+                    [a["y"], b["y"], c["y"], d["y"], a["y"]],
+                    color="black", lw=lw(1.35), zorder=2)
+            shade = [e, b, c, f]
+            ax.fill([p["x"] for p in shade], [p["y"] for p in shade],
+                    color="#68e3df", alpha=0.82, zorder=1)
+            ax.plot([e["x"], b["x"], c["x"], f["x"], e["x"]],
+                    [e["y"], b["y"], c["y"], f["y"], e["y"]],
+                    color="#1a9f3c", lw=lw(1.1), zorder=3)
+            ax.scatter([e["x"], f["x"]], [e["y"], f["y"]],
+                       color="red", s=marker_area(16), zorder=4)
+        else:
+            segment_text = (
+                spec.get("segments", "")
+                or spec.get("segment", "")
+                or spec.get("edges", "")
+                or spec.get("connections", "")
+                or spec.get("connect", "")
+            )
+            if segment_text:
+                draw_named_segments(ax, coords, segment_text, color="#1f77b4", zorder=2)
+            else:
+                ax.plot(xs + [xs[0]], ys + [ys[0]], lw=lw(2))
         for idx, point in enumerate(coords):
-            ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(36), zorder=5)
             label = point["label"] or (labels[idx] if idx < len(labels) else "")
+            if label in ("E", "F"):
+                pass
+            else:
+                ax.scatter([point["x"]], [point["y"]], color="red", s=marker_area(20), zorder=5)
             if label:
-                ax.text(point["x"], point["y"], " " + label, fontsize=fs(11))
-        margin = 1
+                ax.text(point["x"], point["y"], " " + label, fontsize=fs(11), math_fontfamily="stix")
+        margin = max(max(xs) - min(xs), max(ys) - min(ys), 1) * 0.12
         ax.set_xlim(min(xs) - margin, max(xs) + margin)
         ax.set_ylim(min(ys) - margin, max(ys) + margin)
-    ax.grid(True, alpha=0.2)
     ax.set_aspect("equal", adjustable="box")
+    ax.axis("off")
     fig.savefig(output_path, dpi=OUTPUT_DPI, facecolor="white")
     plt.close(fig)
     return []
