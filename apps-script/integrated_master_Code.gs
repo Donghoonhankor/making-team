@@ -1906,6 +1906,7 @@ function hasUnresolvedImagePromptVariables_(block, template) {
   if (normalizedTemplate === 'past_exam_image') return false;
   if (normalizedTemplate === 'multiple_choice_parabola_position') return false;
   if (normalizedTemplate === 'grid_number_table') return false;
+  if (normalizedTemplate === 'annulus_radius_increase') return false;
   const ignoredFields = {
     annotations: true,
     labels: true,
@@ -5908,6 +5909,7 @@ function handlePastExamProblems_(targetSheetName, targetRow, payload) {
     const response = responses[index];
     const requestIndex = Number.isFinite(response.requestIndex) ? response.requestIndex : index;
     const group = chunkGroups[requestIndex];
+    generatedPart = trimPastExamChunkToExpectedCount_(generatedPart, group.count);
     assertPastExamChunkProblemCount_(generatedPart, group.count);
     appendProgressTextChunk_(progress.file, generatedPart, group.count, group.startNumber);
   });
@@ -5951,10 +5953,11 @@ function savePartialPastExamResponses_(file, responses, chunkGroups, targetSheet
         [response.text],
         [group.prompt]
       );
-      assertPastExamChunkProblemCount_(generatedParts[0], group.count);
+      const generatedPart = trimPastExamChunkToExpectedCount_(generatedParts[0], group.count);
+      assertPastExamChunkProblemCount_(generatedPart, group.count);
       appendProgressTextChunk_(
         file,
-        generatedParts[0],
+        generatedPart,
         group.count,
         group.startNumber
       );
@@ -5970,6 +5973,20 @@ function assertPastExamChunkProblemCount_(text, expectedCount) {
   if (expected > 0 && actual !== expected) {
     throw new Error('기출유사문항 1:1 생성 개수 불일치: 요청 ' + expected + '문항, 응답 ' + actual + '문항');
   }
+}
+
+function trimPastExamChunkToExpectedCount_(text, expectedCount) {
+  const expected = Number(expectedCount || 0);
+  const source = String(text || '').trim();
+  if (expected <= 0) return source;
+  const matches = [];
+  const pattern = /^\s*문항\s*\d+\s*[.)]/gm;
+  let match;
+  while ((match = pattern.exec(source)) !== null) {
+    matches.push({ index: match.index });
+  }
+  if (matches.length <= expected) return source;
+  return source.slice(0, matches[expected].index).trim();
 }
 
 function countGeneratedProblemHeadings_(text) {
